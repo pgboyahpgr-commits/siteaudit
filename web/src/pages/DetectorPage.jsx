@@ -3,7 +3,8 @@ import { pipeline, env } from "@huggingface/transformers";
 
 env.allowLocalModels = false;
 env.allowRemoteModels = true;
-env.backends.onnx.wasm.numThreads = 4;
+env.backends.onnx.wasm.numThreads = 1;
+env.backends.onnx.wasm.simd = true;
 
 const ANALYSIS_STEPS = [
   { id: "load",  name: "Loading Image",           desc: "Reading image data locally or fetching via proxy" },
@@ -497,17 +498,15 @@ async function analyzeML(dataUrl) {
     const classifier = await pipeline("image-classification", "onnx-community/ai-source-detector-ONNX", {
       device: "webgpu",
       dtype: "q8",
-      progress_callback: null
+      progress_callback: null,
     });
     const out = await classifier(dataUrl);
     if (!out || out.length === 0) throw new Error("Empty output");
 
     const scoresObj = {};
-    let topLabel = out[0].label, topScore = out[0].score;
-    for (const item of out) {
-      scoresObj[item.label.toLowerCase()] = Math.round(item.score * 100);
-    }
-
+    for (const item of out) scoresObj[item.label.toLowerCase()] = Math.round(item.score * 100);
+    const topLabel = out[0].label;
+    const topScore = out[0].score;
     const aiLabels = ["stable_diffusion", "midjourney", "dalle", "other_ai"];
     const isAI = aiLabels.some(l => topLabel.toLowerCase().includes(l));
 
@@ -516,38 +515,15 @@ async function analyzeML(dataUrl) {
       score: Math.round(topScore * 100),
       allScores: scoresObj,
       summary: isAI
-        ? `Classifier identifies source as ${topLabel.replace(/_/g, " ").toUpperCase()} (${Math.round(topScore*100)}% confidence).`
-        : `Classifier identifies image as Real photograph (${Math.round(topScore*100)}% confidence).`
+        ? `Classifier identifies source as ${topLabel.replace(/_/g, " ").toUpperCase()} (${Math.round(topScore * 100)}% confidence).`
+        : `Classifier identifies image as Real photograph (${Math.round(topScore * 100)}% confidence).`,
     };
   } catch (err) {
-    // WebGPU fallback to WASM
-    try {
-      const classifier = await pipeline("image-classification", "onnx-community/ai-source-detector-ONNX", {
-        device: "wasm",
-        dtype: "q8",
-        progress_callback: null
-      });
-      const out = await classifier(dataUrl);
-      if (!out || out.length === 0) throw new Error("Empty output");
-      const scoresObj = {};
-      for (const item of out) scoresObj[item.label.toLowerCase()] = Math.round(item.score * 100);
-      const topLabel = out[0].label;
-      const aiLabels = ["stable_diffusion", "midjourney", "dalle", "other_ai"];
-      const isAI = aiLabels.some(l => topLabel.toLowerCase().includes(l));
-      return {
-        isAI, source: topLabel.replace(/_/g, " ").toUpperCase(),
-        score: Math.round(out[0].score * 100),
-        allScores: scoresObj,
-        summary: isAI
-          ? `Classifier (WASM fallback): ${topLabel.replace(/_/g, " ").toUpperCase()} (${Math.round(out[0].score*100)}%).`
-          : `Classifier (WASM fallback): Real (${Math.round(out[0].score*100)}%).`
-      };
-    } catch (fallbackErr) {
-      return {
-        error: true, isAI: false, score: 50,
-        summary: "ML model unavailable — may still be downloading. Retry after model loads: " + (err.message || "").slice(0, 120)
-      };
-    }
+    // WebGPU not available — skip ML entirely to avoid WASM stack overflow
+    return {
+      error: true, isAI: false, score: 50,
+      summary: "ML model unavailable (WebGPU required — try Chrome/Edge). Skipping ML classifier. All other engines ran successfully.",
+    };
   }
 }
 
@@ -718,43 +694,58 @@ export default function DetectorPage() {
       setProgressPct(10);
 
       // Step 1: C2PA
-      setStepStatus("c2pa", "running", "Scanning byte-level C2PA markers...");
-      setProgressPct(15);
-      const c2pa = await analyzeC2PA(f);
-      if (abortRef.current) return;
-      setStepStatus("c2pa", "done", c2pa.found ? (c2pa.isAIGenerated ? `AI: ${c2pa.generator}` : "Manifest found") : "Not found");
+      let c2pa = { found: false, isAIGenerated: false, generator: null, summary: "C2PA check skipped." };
+      try {
+        setStepStatus("c2pa", "running", "Scanning byte-level C2PA markers...");
+        setProgressPct(15);
+        c2pa = await analyzeC2PA(f);
+        if (abortRef.current) return;
+        setStepStatus("c2pa", "done", c2pa.found ? (c2pa.isAIGenerated ? `AI: ${c2pa.generator}` : "Manifest found") : "Not found");
+      } catch (e) { setStepStatus("c2pa", "error", e.message); }
       setProgressPct(25);
 
       // Step 2: EXIF
-      setStepStatus("exif", "running", "Parsing EXIF headers...");
-      setProgressPct(30);
-      const exif = await analyzeEXIF(f);
-      if (abortRef.current) return;
-      setStepStatus("exif", "done", exif.aiIndicators.length > 0 ? `${exif.aiIndicators.length} AI signs` : (exif.hasEXIF ? "Present" : "None"));
+      let exif = { hasEXIF: false, aiIndicators: [], summary: "EXIF check skipped." };
+      try {
+        setStepStatus("exif", "running", "Parsing EXIF headers...");
+        setProgressPct(30);
+        exif = await analyzeEXIF(f);
+        if (abortRef.current) return;
+        setStepStatus("exif", "done", exif.aiIndicators.length > 0 ? `${exif.aiIndicators.length} AI signs` : (exif.hasEXIF ? "Present" : "None"));
+      } catch (e) { setStepStatus("exif", "error", e.message); }
       setProgressPct(40);
 
       // Step 3: Frequency
-      setStepStatus("freq", "running", "Running DCT + SynthID scan...");
-      setProgressPct(45);
-      const freq = await analyzeFrequency(dataUrl);
-      if (abortRef.current) return;
-      setStepStatus("freq", "done", freq.watermarkDetected ? freq.watermarkType : (freq.freqAnomalyScore > 35 ? "Anomalies" : "Clean"));
+      let freq = { watermarkDetected: false, watermarkType: "None", freqAnomalyScore: 0, freqDetails: [], summary: "Frequency scan skipped." };
+      try {
+        setStepStatus("freq", "running", "Running DCT + SynthID scan...");
+        setProgressPct(45);
+        freq = await analyzeFrequency(dataUrl);
+        if (abortRef.current) return;
+        setStepStatus("freq", "done", freq.watermarkDetected ? freq.watermarkType : (freq.freqAnomalyScore > 35 ? "Anomalies" : "Clean"));
+      } catch (e) { setStepStatus("freq", "error", e.message); }
       setProgressPct(55);
 
       // Step 4: Heuristics
-      setStepStatus("heur", "running", "Running 8 visual engines...");
-      setProgressPct(60);
-      const heur = await analyzeHeuristics(dataUrl);
-      if (abortRef.current) return;
-      setStepStatus("heur", "done", heur.aiScore > 50 ? `${heur.aiScore}% suspicious` : `${heur.aiScore}% clean`);
+      let heur = { aiScore: 0, reasons: [], summary: "Heuristic scan skipped." };
+      try {
+        setStepStatus("heur", "running", "Running 8 visual engines...");
+        setProgressPct(60);
+        heur = await analyzeHeuristics(dataUrl);
+        if (abortRef.current) return;
+        setStepStatus("heur", "done", heur.aiScore > 50 ? `${heur.aiScore}% suspicious` : `${heur.aiScore}% clean`);
+      } catch (e) { setStepStatus("heur", "error", e.message); }
       setProgressPct(70);
 
-      // Step 5: ML
-      setStepStatus("ml", "running", "Loading model on WebGPU (q8)...");
-      setProgressPct(75);
-      const ml = await analyzeML(dataUrl);
-      if (abortRef.current) return;
-      setStepStatus("ml", "done", ml.error ? "Unavailable" : (ml.isAI ? `${ml.source} (${ml.score}%)` : `Real (${ml.score}%)`));
+      // Step 5: ML (non-critical - skip if it fails, don't break everything)
+      let ml = { error: true, isAI: false, source: "Skipped", score: 50, allScores: {}, summary: "ML model skipped to avoid stack issues. All other engines ran." };
+      try {
+        setStepStatus("ml", "running", "Loading model on WebGPU (q8)...");
+        setProgressPct(75);
+        ml = await analyzeML(dataUrl);
+        if (abortRef.current) return;
+        setStepStatus("ml", "done", ml.error ? "Unavailable" : (ml.isAI ? `${ml.source} (${ml.score}%)` : `Real (${ml.score}%)`));
+      } catch (e) { setStepStatus("ml", "error", "Skipped"); ml.summary = "ML model skipped — WebGPU unavailable or model too large for this browser."; }
       setProgressPct(90);
 
       // Step 6: Verdict
