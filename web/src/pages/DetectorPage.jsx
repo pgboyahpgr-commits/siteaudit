@@ -11,6 +11,7 @@ const ANALYSIS_STEPS = [
   { id: "c2pa",  name: "C2PA Metadata Check",     desc: "Scanning for digital passport & AI provenance claims" },
   { id: "exif",  name: "EXIF & Camera Metadata",   desc: "Analyzing camera, lens, software & creation tags" },
   { id: "freq",  name: "Frequency Domain Scan",    desc: "DCT analysis, SynthID watermark & invisible watermark detection" },
+  { id: "ela",   name: "Error Level Analysis",      desc: "Forensic ELA — detects edit regions via recompression comparison" },
   { id: "heur",  name: "Visual Heuristics (8 engines)", desc: "Noise, edges, banding, patterns, CA, texture, blockiness, detail" },
   { id: "ml",    name: "Deep Learning Classifier", desc: "Running ai-source-detector-ONNX on WebGPU (q8)" },
   { id: "verd",  name: "Weighted Consensus Verdict", desc: "Cross-referencing all 5 analysis engines with source ID" }
@@ -201,6 +202,69 @@ async function analyzeEXIF(file) {
   };
 }
 
+// ── ELA: Error Level Analysis (forensic edit detection) ─────────────────
+async function analyzeELA(dataUrl) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d");
+        const w = Math.min(img.width, 600);
+        const h = Math.min(img.height, 600);
+        canvas.width = w; canvas.height = h;
+        ctx.drawImage(img, 0, 0, w, h);
+        const originalData = ctx.getImageData(0, 0, w, h);
+        // Re-encode at quality 0.85 and compare
+        const reEncodeCanvas = document.createElement("canvas");
+        reEncodeCanvas.width = w; reEncodeCanvas.height = h;
+        const reCtx = reEncodeCanvas.getContext("2d");
+        reCtx.putImageData(originalData, 0, 0);
+        const reEncodedUrl = reEncodeCanvas.toDataURL("image/jpeg", 0.85);
+        const reImg = new Image();
+        reImg.onload = () => {
+          const compCanvas = document.createElement("canvas");
+          compCanvas.width = w; compCanvas.height = h;
+          const compCtx = compCanvas.getContext("2d");
+          compCtx.drawImage(reImg, 0, 0, w, h);
+          const reEncodedData = compCtx.getImageData(0, 0, w, h);
+          const o = originalData.data, r = reEncodedData.data;
+          let totalDiff = 0, highDiffPixels = 0;
+          const diffValues = [];
+          for (let i = 0; i < o.length; i += 4) {
+            const dr = Math.abs(o[i] - r[i]);
+            const dg = Math.abs(o[i + 1] - r[i + 1]);
+            const db = Math.abs(o[i + 2] - r[i + 2]);
+            const diff = (dr + dg + db) / 3;
+            totalDiff += diff;
+            diffValues.push(diff);
+            if (diff > 15) highDiffPixels++;
+          }
+          const avgDiff = totalDiff / (o.length / 4);
+          const highDiffRatio = highDiffPixels / (o.length / 4);
+          let elaScore = 0;
+          const details = [];
+          if (avgDiff > 8) { elaScore += 40; details.push("High average ELA difference — possible editing."); }
+          if (highDiffRatio > 0.08) { elaScore += 35; details.push(`${(highDiffRatio*100).toFixed(1)}% pixels show edit-level differences.`); }
+          if (avgDiff > 4) { elaScore += 15; details.push("Moderate recompression artifacts."); }
+          resolve({
+            elaScore: Math.min(95, elaScore),
+            avgDiff: Math.round(avgDiff * 10) / 10,
+            highDiffPct: Math.round(highDiffRatio * 1000) / 10,
+            details: details.length > 0 ? details : ["Image appears consistent — no significant editing artifacts."],
+            summary: elaScore > 50 ? "Forensic analysis suggests image may have been edited or manipulated."
+              : elaScore > 20 ? "Minor compression inconsistencies detected."
+              : "ELA analysis shows consistent compression — no strong editing signs.",
+          });
+        };
+        reImg.src = reEncodedUrl;
+      } catch { resolve({ elaScore: 0, details: ["ELA skipped"], summary: "Analysis failed." }); }
+    };
+    img.onerror = () => resolve({ elaScore: 0, details: ["Image load failed"], summary: "ELA skipped." });
+    img.src = dataUrl;
+  });
+}
+
 // ── 3. Full DCT frequency analysis + watermark detection ──────────────
 async function analyzeFrequency(dataUrl) {
   const { canvas, ctx, w, h } = await loadImageToCanvas(dataUrl, 512);
@@ -240,14 +304,36 @@ async function analyzeFrequency(dataUrl) {
     }
   }
 
-  // SynthID-style: correlation of (7,0) vs (0,7) DCT coefficients across blocks
+  // SynthID detection: Google's watermark modulates specific DCT coefficients
+  // Check 3 key patterns: (7,0) vs (0,7) correlation, grid alignment, and HF energy pattern
   let corrA = 0, corrB = 0, corrAB = 0;
-  for (const dct of blockDctCoefficients) {
+  let gridMatches = 0, gridChecks = 0;
+  for (let i = 0; i < blockDctCoefficients.length; i++) {
+    const dct = blockDctCoefficients[i];
     const a = dct[56] || 0; const b = dct[7] || 0;
     corrA += a * a; corrB += b * b; corrAB += a * b;
   }
+  // Also check neighboring blocks for grid alignment (SynthID embeds across blocks)
+  const numBlocksPerRow = 512 / 8;
+  for (let by = 0; by < numBlocksPerRow - 1; by++) {
+    for (let bx = 0; bx < numBlocksPerRow - 1; bx++) {
+      const idx = by * numBlocksPerRow + bx;
+      const right = by * numBlocksPerRow + (bx + 1);
+      const bottom = (by + 1) * numBlocksPerRow + bx;
+      if (right < blockDctCoefficients.length && bottom < blockDctCoefficients.length) {
+        gridChecks++;
+        const cThis = Math.abs(blockDctCoefficients[idx][56] || 0);
+        const cRight = Math.abs(blockDctCoefficients[right][56] || 0);
+        const cBottom = Math.abs(blockDctCoefficients[bottom][56] || 0);
+        if (cThis > 0.5 && Math.abs(cThis - cRight) < cThis * 0.4 && Math.abs(cThis - cBottom) < cThis * 0.4) {
+          gridMatches++;
+        }
+      }
+    }
+  }
   const corrDenom = Math.sqrt(corrA * corrB);
   const dctCorrelation = corrDenom > 0 ? Math.abs(corrAB / corrDenom) : 0;
+  const gridAlignmentScore = gridChecks > 0 ? gridMatches / gridChecks : 0;
 
   const synthIdRatio  = totalBlocks > 0 ? synthIdBlocks / totalBlocks : 0;
   const sdRatio        = totalBlocks > 0 ? sdBlocks / totalBlocks : 0;
@@ -260,21 +346,26 @@ async function analyzeFrequency(dataUrl) {
   let freqAnomalyScore = 0;
   const freqDetails = [];
 
-  // SynthID: high DCT correlation + high-frequency energy pattern
-  if (dctCorrelation > 0.62 && synthIdRatio > 0.14) {
+  // SynthID detection: uses DCT correlation + grid alignment + HF pattern
+  if ((dctCorrelation > 0.45 && gridAlignmentScore > 0.30) || (dctCorrelation > 0.35 && synthIdRatio > 0.10)) {
     watermarkDetected = true;
     watermarkType = "SynthID (Google DeepMind)";
-    freqAnomalyScore = Math.min(98, Math.round(dctCorrelation * 120 + synthIdRatio * 200));
-    freqDetails.push(`SynthID pattern: DCT coefficient correlation ${(dctCorrelation*100).toFixed(1)}%, ${(synthIdRatio*100).toFixed(1)}% blocks match.`);
-  } else if (sdRatio > 0.20 && hfMfRatio > 1.6) {
+    freqAnomalyScore = Math.min(98, Math.round(dctCorrelation * 100 + gridAlignmentScore * 80 + synthIdRatio * 200));
+    freqDetails.push(`SynthID pattern: DCT correlation ${(dctCorrelation*100).toFixed(1)}%, grid alignment ${(gridAlignmentScore*100).toFixed(1)}%, ${(synthIdRatio*100).toFixed(1)}% blocks match.`);
+  } else if (dctCorrelation > 0.40 || (synthIdRatio > 0.06 && gridAlignmentScore > 0.20)) {
+    watermarkDetected = true;
+    watermarkType = "SynthID (Google DeepMind) — weak signal";
+    freqAnomalyScore = Math.min(85, Math.round(dctCorrelation * 100 + gridAlignmentScore * 60));
+    freqDetails.push(`Faint SynthID pattern: DCT correlation ${(dctCorrelation*100).toFixed(1)}%, grid ${(gridAlignmentScore*100).toFixed(1)}%.`);
+  } else if (sdRatio > 0.20 && hfMfRatio > 1.4) {
     watermarkDetected = true;
     watermarkType = "Stable Diffusion Invisible Watermark";
     freqAnomalyScore = Math.min(95, Math.round(sdRatio * 320));
     freqDetails.push(`SD watermark: ${(sdRatio*100).toFixed(1)}% blocks show DWT/DCT high-frequency peak alignment.`);
-  } else if (dctCorrelation > 0.40) {
-    watermarkType = "Generic AI Watermark (unclassified)";
-    freqAnomalyScore = Math.min(85, Math.round(dctCorrelation * 150));
-    freqDetails.push(`Unclassified frequency watermark detected — DCT correlation ${(dctCorrelation*100).toFixed(1)}%.`);
+  } else if (dctCorrelation > 0.28 || synthIdRatio > 0.05) {
+    watermarkType = "Possible AI Watermark (weak)";
+    freqAnomalyScore = Math.min(65, Math.round(dctCorrelation * 120 + synthIdRatio * 300));
+    freqDetails.push(`Weak frequency pattern detected — DCT correlation ${(dctCorrelation*100).toFixed(1)}%, ${(synthIdRatio*100).toFixed(1)}% blocks.`);
   }
 
   if (!watermarkDetected && synthIdRatio > 0.07) {
@@ -528,7 +619,7 @@ async function analyzeML(dataUrl) {
 }
 
 // ── 6. Weighted consensus verdict engine ──────────────────────────────
-function computeVerdict({ c2pa, exif, freq, heur, ml }) {
+function computeVerdict({ c2pa, exif, freq, ela, heur, ml }) {
   let totalScore = 0, totalWeight = 0;
   const reasons = [];
   let primarySource = "Unknown";
@@ -556,6 +647,17 @@ function computeVerdict({ c2pa, exif, freq, heur, ml }) {
     totalWeight += 1.8;
     totalScore += 1.8 * freq.freqAnomalyScore;
     reasons.push(`DCT frequency anomalies: ${freq.freqAnomalyScore}% score.`);
+  }
+
+  // ELA: weight 1.5
+  if (ela.elaScore > 40) {
+    totalWeight += 1.5;
+    totalScore += 1.5 * ela.elaScore;
+    reasons.push(`Error Level Analysis: ${ela.elaScore}% — suggests image manipulation.`);
+  } else if (ela.elaScore > 20) {
+    totalWeight += 0.8;
+    totalScore += 0.8 * ela.elaScore;
+    reasons.push(`ELA: minor inconsistencies (${ela.elaScore}%).`);
   }
 
   // Heuristics: weight 3.0
@@ -724,7 +826,18 @@ export default function DetectorPage() {
         if (abortRef.current) return;
         setStepStatus("freq", "done", freq.watermarkDetected ? freq.watermarkType : (freq.freqAnomalyScore > 35 ? "Anomalies" : "Clean"));
       } catch (e) { setStepStatus("freq", "error", e.message); }
-      setProgressPct(55);
+      setProgressPct(52);
+
+      // Step 3b: ELA (Error Level Analysis)
+      let ela = { elaScore: 0, details: [], summary: "ELA skipped." };
+      try {
+        setStepStatus("ela", "running", "Error Level Analysis...");
+        setProgressPct(52);
+        ela = await analyzeELA(dataUrl);
+        if (abortRef.current) return;
+        setStepStatus("ela", "done", ela.elaScore > 40 ? `Suspicious (${ela.elaScore}%)` : "Clean");
+      } catch (e) { setStepStatus("ela", "error", e.message); }
+      setProgressPct(58);
 
       // Step 4: Heuristics
       let heur = { aiScore: 0, reasons: [], summary: "Heuristic scan skipped." };
@@ -751,12 +864,12 @@ export default function DetectorPage() {
       // Step 6: Verdict
       setStepStatus("verd", "running", "Cross-referencing all engines...");
       setProgressPct(93);
-      const overall = computeVerdict({ c2pa, exif, freq, heur, ml });
+      const overall = computeVerdict({ c2pa, exif, freq, ela, heur, ml });
       if (abortRef.current) return;
       setStepStatus("verd", "done", "Complete");
       setProgressPct(100);
 
-      setResults({ c2pa, exif, freq, heur, ml, overall });
+      setResults({ c2pa, exif, freq, ela, heur, ml, overall });
       setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: "smooth" }), 150);
     } catch (err) {
       if (abortRef.current) return;
@@ -772,7 +885,7 @@ export default function DetectorPage() {
       timestamp: new Date().toISOString(),
       file: { name: currentFile?.name || "unknown", sizeBytes: currentFile?.size || 0, type: currentFile?.type || "image/jpeg" },
       verdict: results.overall,
-      c2pa: results.c2pa, exif: results.exif, frequency: results.freq,
+      c2pa: results.c2pa, exif: results.exif, frequency: results.freq, ela: results.ela,
       heuristics: results.heur, ml: results.ml
     };
     const blob = new Blob([JSON.stringify(report, null, 2)], { type: "application/json" });
@@ -987,6 +1100,27 @@ export default function DetectorPage() {
                 {results.freq.freqDetails?.length > 0 && (
                   <div style={{ marginTop: 8, background: "var(--panel-2)", padding: 8, borderRadius: 6, fontSize: 11 }}>
                     {results.freq.freqDetails.map((d,i) => <div key={i}>• {d}</div>)}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* ELA */}
+            <div className="console">
+              <div className="console-title" style={{ display: "flex", justifyContent: "space-between" }}>
+                <span>🔍 Error Level Analysis</span>
+                <span style={{ fontSize: 12, color: results.ela.elaScore > 40 ? "var(--red)" : "var(--green)" }}>
+                  {results.ela.elaScore > 40 ? `${results.ela.elaScore}% suspicious` : `${results.ela.elaScore}% clean`}
+                </span>
+              </div>
+              <div className="console-body" style={{ fontSize: 13, lineHeight: 1.6 }}>
+                <p>{results.ela.summary}</p>
+                <p style={{ marginTop: 6 }}><b>ELA Score:</b> {results.ela.elaScore}%</p>
+                {results.ela.avgDiff != null && <p style={{ marginTop: 4 }}><b>Avg Diff:</b> {results.ela.avgDiff}</p>}
+                {results.ela.highDiffPct != null && <p style={{ marginTop: 4 }}><b>High-Diff Pixels:</b> {results.ela.highDiffPct}%</p>}
+                {results.ela.details?.length > 0 && (
+                  <div style={{ marginTop: 8, background: "var(--panel-2)", padding: 8, borderRadius: 6, fontSize: 11 }}>
+                    {results.ela.details.map((d, i) => <div key={i}>• {d}</div>)}
                   </div>
                 )}
               </div>

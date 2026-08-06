@@ -144,6 +144,28 @@ export default function HomePage() {
         </div>
       </form>
 
+      <div className="try-examples" style={{ margin: "20px 0", textAlign: "center" }}>
+        <span className="small dim" style={{ display: "block", marginBottom: 10 }}>TRY SCANNING AN EXAMPLE:</span>
+        <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
+          {[
+            { label: "example.com", url: "https://example.com" },
+            { label: "httpbin.org", url: "https://httpbin.org" },
+            { label: "hackthissite.org", url: "https://hackthissite.org" },
+            { label: "demo.testfire.net", url: "https://demo.testfire.net" },
+          ].map((ex) => (
+            <button
+              key={ex.url}
+              className="nav-pill"
+              type="button"
+              onClick={() => { setUrl(ex.url); document.querySelector(".url-input")?.focus(); }}
+              style={{ cursor: "pointer",fontSize:12 }}
+            >
+              {ex.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <div className="how-wrap">
         <div className="how">
           <span className="how-n">01</span>

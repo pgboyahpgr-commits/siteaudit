@@ -185,7 +185,7 @@ export function aiProviders() {
   const order = (process.env.AI_PROVIDER || defaultOrder)
     .split(",")
     .map((s) => s.trim().toLowerCase())
-    .filter((p) => PROVIDERS[p] && PROVIDERS[p].key());
+    .filter((p) => PROVIDERS[p] && (p === "pollinations" || PROVIDERS[p].key()));
   return order;
 }
 
