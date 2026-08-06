@@ -40,8 +40,17 @@ const pool = new Pool({
 });
 
 let ensured = null;
-function ensure() {
-  if (!ensured) ensured = pool.query(SCHEMA_SQL).then(() => true);
+async function ensure() {
+  if (!ensured) {
+    try {
+      ensured = pool.query(SCHEMA_SQL).then(() => true);
+      await ensured;
+    } catch (err) {
+      console.warn("[db-supabase] Connection failed, falling back to local SQLite:", err.message);
+      ensured = null;
+      throw err;
+    }
+  }
   return ensured;
 }
 

@@ -3,15 +3,21 @@ import * as supabase from "./db-supabase.js";
 
 // Facade: use Supabase (Postgres) when DATABASE_URL is set, otherwise local SQLite.
 // All callers keep the same synchronous signatures, so nothing else changes.
-const pick = () => (process.env.DATABASE_URL ? supabase : sqlite);
+async function safe(fnName, ...args) {
+  if (process.env.DATABASE_URL) {
+    try {
+      return await supabase[fnName](...args);
+    } catch (err) {
+      console.warn(`[db] Supabase operation ${fnName} failed (${err.message}). Using SQLite.`);
+    }
+  }
+  return sqlite[fnName](...args);
+}
 
-export const dbKind = () => (process.env.DATABASE_URL ? "supabase" : "sqlite");
-export const db = sqlite.db;
-
-export const createUser = (a, b, c, d) => pick().createUser(a, b, c, d);
-export const findUserByEmail = (a) => pick().findUserByEmail(a);
-export const findUserById = (a) => pick().findUserById(a);
-export const upsertScan = (a) => pick().upsertScan(a);
-export const listUserScans = (a, b) => pick().listUserScans(a, b);
-export const saveChatMessage = (a) => pick().saveChatMessage(a);
-export const listChatMessages = (a, b) => pick().listChatMessages(a, b);
+export const createUser = (a, b, c, d) => safe("createUser", { id: a, email: b, passwordHash: c });
+export const findUserByEmail = (a) => safe("findUserByEmail", a);
+export const findUserById = (a) => safe("findUserById", a);
+export const upsertScan = (a) => safe("upsertScan", a);
+export const listUserScans = (a, b) => safe("listUserScans", a, b);
+export const saveChatMessage = (a) => safe("saveChatMessage", a);
+export const listChatMessages = (a, b) => safe("listChatMessages", a, b);
