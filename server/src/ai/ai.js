@@ -122,10 +122,30 @@ const PROVIDERS = {
         user,
       }),
   },
+  pollinations: {
+    key: () => "pollinations-free",
+    model: () => process.env.POLLINATIONS_MODEL || "openai",
+    call: async (system, user) => {
+      const res = await fetch("https://text.pollinations.ai/", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          messages: [
+            { role: "system", content: system },
+            { role: "user", content: user },
+          ],
+          model: process.env.POLLINATIONS_MODEL || "openai",
+          jsonMode: false
+        }),
+        signal: AbortSignal.timeout(20000),
+      });
+      if (!res.ok) throw new Error(`Pollinations HTTP ${res.status}`);
+      const text = await res.text();
+      return text || "";
+    },
+  },
   lmstudio: {
-    // Local models run 100% free & offline via LM Studio (localhost:1234).
-    // Only joins the chain when LMSTUDIO_ENABLED=1 (it won't work from a cloud host).
-    key: () => (process.env.LMSTUDIO_ENABLED === "1" ? "lmstudio-local" : undefined),
+    key: () => (process.env.LMSTUDIO_ENABLED === "1" || process.env.LMSTUDIO_BASE_URL ? "lmstudio" : undefined),
     model: () => process.env.LMSTUDIO_MODEL || "local-model",
     call: async (system, user) =>
       openAICompat({
@@ -161,7 +181,8 @@ async function openAICompat({ url, key, model, system, user }) {
 }
 
 export function aiProviders() {
-  const order = (process.env.AI_PROVIDER || "gemini,xai,completions,mistral,nim,openai,anthropic,lmstudio")
+  const defaultOrder = "gemini,pollinations,xai,completions,mistral,nim,openai,anthropic,lmstudio";
+  const order = (process.env.AI_PROVIDER || defaultOrder)
     .split(",")
     .map((s) => s.trim().toLowerCase())
     .filter((p) => PROVIDERS[p] && PROVIDERS[p].key());

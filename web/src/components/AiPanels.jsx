@@ -79,7 +79,7 @@ export default function AiPanels({ scanId }) {
       <div className="console mt">
         <div className="console-title">
           <span className="traffic"><span className="t g" /><span className="t a" /><span className="t r" /></span>
-          <span>ai_analyst.exe — RISK REPORT {ai.engine === "ai" ? `via ${ai.provider}` : "(local engine)"}</span>
+          <span>ai_analyst.exe — RISK REPORT {ai.engine === "ai" ? `via ${ai.provider}` : ai.provider ? `(${ai.provider})` : "(Pollinations / Local)"}</span>
         </div>
         <div className="console-body">
           <div className="ai-summary">

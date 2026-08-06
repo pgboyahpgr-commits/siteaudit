@@ -4,25 +4,25 @@
    ============================================================ */
 
 :root {
-  --bg: #04060c;
-  --bg-2: #070b14;
-  --panel: #0b1120;
-  --panel-2: #0f1730;
-  --panel-3: #131d3a;
-  --line: #1c2b47;
-  --line-2: #26395e;
-  --green: #33ffa1;
-  --green-dim: #16b97c;
-  --cyan: #38e1ff;
-  --magenta: #ff2d95;
-  --amber: #ffb020;
-  --red: #ff4d5e;
-  --text: #dce7f5;
-  --dim: #7f92b8;
-  --dim-2: #4c5f85;
+  --bg: #121418;
+  --bg-2: #181b22;
+  --panel: #1e222a;
+  --panel-2: #242933;
+  --panel-3: #2d3340;
+  --line: #333947;
+  --line-2: #41495c;
+  --green: #10b981;
+  --green-dim: #059669;
+  --cyan: #38bdf8;
+  --magenta: #f43f5e;
+  --amber: #f59e0b;
+  --red: #ef4444;
+  --text: #f3f4f6;
+  --dim: #9ca3af;
+  --dim-2: #6b7280;
   --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Consolas, monospace;
   --display: "Space Grotesk", "Segoe UI", system-ui, sans-serif;
-  --glow: 0 0 14px rgba(51, 255, 161, 0.35);
+  --glow: 0 0 14px rgba(16, 185, 129, 0.3);
 }
 
 * {
