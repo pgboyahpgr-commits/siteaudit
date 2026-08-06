@@ -73,14 +73,89 @@ const PROVIDERS = {
       return data?.content?.map((c) => c.text).join("") || "";
     },
   },
+  // OpenAI-compatible providers (xAI Grok, Completions AI, Mistral, NVIDIA NIM)
+  xai: {
+    key: () => process.env.XAI_API_KEY,
+    model: () => process.env.XAI_MODEL || "grok-3",
+    call: async (system, user) =>
+      openAICompat({
+        url: "https://api.x.ai/v1/chat/completions",
+        key: process.env.XAI_API_KEY,
+        model: process.env.XAI_MODEL || "grok-3",
+        system,
+        user,
+      }),
+  },
+  completions: {
+    key: () => process.env.COMPLETIONS_API_KEY,
+    model: () => process.env.COMPLETIONS_MODEL || "gemini-2.5-flash",
+    call: async (system, user) =>
+      openAICompat({
+        url: (process.env.COMPLETIONS_BASE_URL || "https://completions.me/api/v1").replace(/\/$/, "") + "/chat/completions",
+        key: process.env.COMPLETIONS_API_KEY,
+        model: process.env.COMPLETIONS_MODEL || "gemini-2.5-flash",
+        system,
+        user,
+      }),
+  },
+  mistral: {
+    key: () => process.env.MISTRAL_API_KEY,
+    model: () => process.env.MISTRAL_MODEL || "mistral-small-latest",
+    call: async (system, user) =>
+      openAICompat({
+        url: "https://api.mistral.ai/v1/chat/completions",
+        key: process.env.MISTRAL_API_KEY,
+        model: process.env.MISTRAL_MODEL || "mistral-small-latest",
+        system,
+        user,
+      }),
+  },
+  nim: {
+    key: () => process.env.NVIDIA_NIM_API_KEY,
+    model: () => process.env.NVIDIA_NIM_MODEL || "deepseek-ai/deepseek-r1",
+    call: async (system, user) =>
+      openAICompat({
+        url: "https://integrate.api.nvidia.com/v1/chat/completions",
+        key: process.env.NVIDIA_NIM_API_KEY,
+        model: process.env.NVIDIA_NIM_MODEL || "deepseek-ai/deepseek-r1",
+        system,
+        user,
+      }),
+  },
 };
 
+// Any provider that speaks OpenAI's chat-completions format can share this caller.
+async function openAICompat({ url, key, model, system, user }) {
+  if (!key) throw new Error("missing API key");
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `Bearer ${key}` },
+    body: JSON.stringify({
+      model,
+      messages: [
+        { role: "system", content: system },
+        { role: "user", content: user },
+      ],
+      temperature: 0.4,
+      max_tokens: 1600,
+    }),
+    signal: AbortSignal.timeout(30000),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  const data = await res.json();
+  return data?.choices?.[0]?.message?.content || "";
+}
+
 export function aiProviders() {
-  const order = (process.env.AI_PROVIDER || "gemini,openai,anthropic")
+  const order = (process.env.AI_PROVIDER || "gemini,xai,completions,mistral,nim,openai,anthropic")
     .split(",")
     .map((s) => s.trim().toLowerCase())
     .filter((p) => PROVIDERS[p] && PROVIDERS[p].key());
   return order;
+}
+
+export function aiProviderNames() {
+  return aiProviders();
 }
 
 export function aiEnabled() {
@@ -115,7 +190,7 @@ export async function parseJsonLoose(text) {
   }
 }
 
-function buildContext(scan) {
+export function buildContext(scan) {
   const findings = scan.findings || [];
   const counts = { critical: 0, high: 0, medium: 0, low: 0, info: 0 };
   for (const f of findings) if (counts[f.severity] != null) counts[f.severity]++;
@@ -285,5 +360,58 @@ export async function ensureAiAnalysis(scanId) {
   } catch (err) {
     console.error(`[ai] analysis failed for ${scanId}:`, err.message);
     return null;
+  }
+}
+
+// ---------- Reversiy: the SiteAudit AI agent (floating security pet) ----------
+
+const REVERSIY_SYSTEM = [
+  "You are Reversiy, a friendly, slightly playful AI security companion that lives on the SiteAudit website.",
+  "You are concise, warm and practical. You talk like a knowledgeable friend, and you can also be a security engineer.",
+  "You know about the current scan if scan context is provided — answer questions about the site's security, findings, score and fixes using ONLY that data. Never invent vulnerabilities or CVEs.",
+  "If no scan context is given, you can still answer general questions about web security, how SiteAudit works, verification, VibeCheck, or anything the user asks — but never invent CVEs or vulnerabilities.",
+  "Keep answers to 2-5 sentences unless the user asks for detail. Prefer short, punchy replies with an occasional emoji or two.",
+  "If asked for a fix, give concrete steps or code/config snippets.",
+].join(" ");
+
+export function localAgentReply(question) {
+  const q = question.toLowerCase();
+  if (/hi|hello|hey|yo|sup/.test(q)) {
+    return "Hey there! 👋 I'm Reversiy — your security sidekick. Paste a URL and hit RUN SCAN, then I'll help you understand exactly what's wrong and how to fix it. Ask me anything!";
+  }
+  if (/what are you|who are you|your name/.test(q)) {
+    return "I'm Reversiy 🛰️ — SiteAudit's resident AI agent. I live on every page of this site, watching your scans, explaining findings in plain English, and turning them into fixes.";
+  }
+  if (/score|how bad|risk/.test(q)) {
+    return "Your scan score lives in the REPORT panel at the top of the scan page. Scores below 50 need urgent action, 50–79 means fix the medium/high items, 80+ is in good shape. Open a scan and I'll walk you through its numbers!";
+  }
+  if (/how.*scan|does.*work|how to use/.test(q)) {
+    return "It's simple: paste a URL → RUN SCAN (passive, no signup) → read the report → VERIFY ownership with a token file to unlock the FULL CHECK. On the scan page you'll also get AI risk reports, VibeCheck, video fix guides and me 😄";
+  }
+  if (/verif/.test(q)) {
+    return "Ownership verification proves the site is yours before the deeper Full Check unlocks. Easiest method: TOKEN FILE — download it, drop it in your site's public/ folder (Vercel) and redeploy, then we auto-check it every 8 seconds.";
+  }
+  if (/vibe|trustworth|vibecode/.test(q)) {
+    return "VibeCheck scores 0–100 how 'vibe-coded' a site looks — boilerplate scaffolds, placeholder copy, free proxies as backend, hardcoded seed data. High score = looks untrustworthy. My fix guides show you videos for exactly those issues!";
+  }
+  if (/thank/.test(q)) {
+    return "Anytime! 🎉 That's what I'm here for. If you hit a wall, hit the ▶ WATCH TUTORIAL button on any finding or ask me again.";
+  }
+  return "I can help with: reading a scan (findings, score, VibeCheck), how SiteAudit works, ownership verification, and general web-security questions. Open a scan and ask me 'what should I fix first?', or just ask anything! 🤖";
+}
+
+export async function agentReply({ message, history = [], context = null }) {
+  const system = context ? `${REVERSIY_SYSTEM}\n\nCurrent scan context (JSON):\n${JSON.stringify(context).slice(0, 4000)}` : REVERSIY_SYSTEM;
+  const convo = history
+    .slice(-8)
+    .map((m) => `${m.role}: ${m.content}`)
+    .join("\n");
+  const user = `${convo ? `Conversation so far:\n${convo}\n\n` : ""}User: ${message}\n\nReversiy:`;
+  if (!aiEnabled()) return { reply: localAgentReply(message), provider: "local" };
+  try {
+    const { text, provider } = await callLLM(system, user);
+    return { reply: text.trim(), provider };
+  } catch (err) {
+    return { reply: localAgentReply(message), provider: `local (${err.message})` };
   }
 }

@@ -26,6 +26,7 @@ export const api = {
   getFindings: (id) => request(`/scan/${id}/findings`),
   getHostInfo: (id) => request(`/scan/${id}/host-info`),
   getVideos: (id, q) => request(`/scan/${id}/videos${q ? `?q=${encodeURIComponent(q)}` : ""}`),
+  agent: (message, scanId, history) => request("/agent", { method: "POST", body: { message, scanId: scanId || undefined, history } }),
   getAi: (id, refresh) => request(`/scan/${id}/ai${refresh ? "?refresh=1" : ""}`),
   saveScan: (id) => request(`/scan/${id}/save`, { method: "POST", body: {} }),
   chat: (id, question) => request(`/scan/${id}/chat`, { method: "POST", body: { question } }),

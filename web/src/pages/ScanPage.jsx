@@ -11,6 +11,7 @@ import VideoGuides from "../components/VideoGuides.jsx";
 import FindingFixTools from "../components/FindingFixTools.jsx";
 import { downloadJSON, downloadCSV, downloadHTML } from "../report.js";
 import { SEV_ORDER } from "../theme.js";
+import { setAgentContext } from "../agentContext.js";
 
 const PHASE_LINE = {
   discovery: ["[phase:discovery]", "[crawl]", "Crawling pages, robots.txt & collecting source..."],
@@ -43,6 +44,7 @@ export default function ScanPage() {
         const s = await api.getScan(id);
         if (stop) return;
         setScan(s);
+        setAgentContext({ scanId: s.scanId, targetUrl: s.targetUrl });
         if (s.status === "queued" || s.status === "running") {
           timer = setTimeout(load, 1300);
         }
@@ -54,6 +56,7 @@ export default function ScanPage() {
     return () => {
       stop = true;
       clearTimeout(timer);
+      setAgentContext({ scanId: null, targetUrl: null });
     };
   }, [id]);
 

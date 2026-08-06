@@ -136,6 +136,29 @@ export function registerRoutes(app) {
     res.json({ ok: true, name: "siteaudit-api", time: new Date().toISOString() });
   });
 
+  // ---- Reversiy agent (floating AI companion on every page) ----
+  router.post("/agent", async (req, res) => {
+    const message = String(req.body?.message || "").trim().slice(0, 3000);
+    if (!message) return res.status(400).json({ error: { code: "VALIDATION", message: "message is required." } });
+    const scanId = String(req.body?.scanId || "").slice(0, 60);
+    const history = Array.isArray(req.body?.history) ? req.body.history.slice(-8) : [];
+    let context = null;
+    if (scanId) {
+      const scan = getScan(scanId);
+      if (scan) {
+        const { buildContext } = await import("./ai/ai.js");
+        context = JSON.parse(buildContext(scan));
+      }
+    }
+    const { agentReply } = await import("./ai/ai.js");
+    try {
+      const { reply, provider } = await agentReply({ message, history, context });
+      res.json({ reply, provider });
+    } catch (err) {
+      res.status(502).json({ error: { code: "AI_ERROR", message: err.message } });
+    }
+  });
+
   // ---- Auth ----
   router.post("/auth/register", async (req, res) => {
     const parsed = registerSchema.safeParse(req.body);

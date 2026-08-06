@@ -37,9 +37,10 @@ their own site, in their own account, with their own data.
 - **Risk engine** finds exposures, misconfigs, header issues, TLS problems, and
   version-gated CVEs — every finding with evidence, a plain-English explanation, and a
   step-by-step fix.
-- **AI Security Analyst** (Google Gemini → OpenAI → Anthropic → **built-in local
-  fallback**) writes the plain-language risk report, the prioritized fix plan, and the
-  VibeCheck narrative. Works even with zero API keys.
+- **AI Security Analyst** (Google Gemini → xAI Grok → Completions AI → Mistral →
+  NVIDIA NIM → OpenAI → Anthropic → **built-in local fallback**) writes the
+  plain-language risk report, the prioritized fix plan, and the VibeCheck narrative.
+  Works even with zero API keys.
 - **AI Security Advisor chat** answers questions about *your* scan, grounded only in your
   data.
 - **VibeCheck** quantifies how "vibe-coded" a site looks (boilerplate scaffolds,
@@ -70,6 +71,7 @@ their own site, in their own account, with their own data.
 | Advisor Chat | Ask anything about your scan — grounded answers |
 | Video Fix Guides | Auto-searches YouTube (via a configurable `YT_SEARCH_API` proxy) for tutorial videos matching your top issues; every finding has a "▶ Watch tutorial" button |
 | AI Fix Prompt | One-click copy of a precise, paste-into-any-AI prompt that solves that exact finding (code/config + verification steps) |
+| Reversiy agent | Floating pixel-CRT AI pet on **every page** — answers questions, is scan-aware, greets you, and can "⚡ ask Reversiy to fix" any finding |
 | Full Check | Active testing unlocked only after ownership verification |
 | Verification UX | One-click token download, "open verify URL" check, live instructions for file/meta/header/DNS/CNAME/email |
 | Sharing | Public shareable HTML report (`/scan/:id/report`), save-to-account button, JSON/CSV/HTML export |
@@ -89,7 +91,7 @@ their own site, in their own account, with their own data.
 | Password hashing | **bcrypt** (`bcryptjs`) |
 | Validation | **Zod** (schemas on scan/auth/challenge/chat inputs) |
 | Database | **SQLite** via `node:sqlite` (`server/src/db.js`) |
-| AI | **Google Gemini** (default) → **OpenAI** → **Anthropic Claude**, keyed in backend env only, with a deterministic local fallback when no key is set or the API is down |
+| AI | **Google Gemini** (default) → **xAI Grok** → **Completions AI** → **Mistral** → **NVIDIA NIM** → OpenAI → Anthropic, keyed in backend env only, with a deterministic local fallback when no key is set or the API is down |
 | Deploy | Vercel/Netlify (frontend), Render/Railway (backend) |
 
 See [docs/SUBMISSION.md](docs/SUBMISSION.md) for the full mapping and deliverables.
@@ -151,10 +153,12 @@ score (the demo triggers "Full AI prototype"), the fix plan, and the advisor cha
 
 ### Set up AI (optional — everything works without it)
 1. `Copy-Item server/.env.example server/.env`
-2. Add `GEMINI_API_KEY` (free at aistudio.google.com), or `OPENAI_API_KEY` /
-   `ANTHROPIC_API_KEY`.
-3. Restart the server. The AI analyst and vibe narrative now use real LLMs; if a
-   provider fails, SiteAudit automatically falls back to the next, then to local rules.
+2. Add any of `GEMINI_API_KEY` (free at aistudio.google.com), `XAI_API_KEY`
+   (console.x.ai), `COMPLETIONS_API_KEY` (completions.me), `MISTRAL_API_KEY`,
+   `NVIDIA_NIM_API_KEY`, `OPENAI_API_KEY`, or `ANTHROPIC_API_KEY`.
+3. Restart the server. The AI analyst, Reversiy agent, and vibe narrative now use real
+   LLMs; if a provider fails or is rate-limited, SiteAudit automatically tries the next
+   provider in the chain, then falls back to local rules.
 
 ---
 

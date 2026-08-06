@@ -1,20 +1,6 @@
 import { useState, useEffect } from "react";
 import { api } from "../api.js";
-
-function VideoCard({ v }) {
-  return (
-    <a className="vid-card" href={v.fullUrl} target="_blank" rel="noreferrer">
-      <div className="vid-thumb">
-        {v.thumbnail ? <img src={v.thumbnail} alt="" loading="lazy" /> : <span className="vid-play">▶</span>}
-        <span className="vid-play-badge">▶</span>
-      </div>
-      <div className="vid-info">
-        <div className="vid-title">{v.title}</div>
-        <div className="vid-author">{v.author}</div>
-      </div>
-    </a>
-  );
-}
+import VideoCard from "./VideoCard.jsx";
 
 export default function VideoGuides({ scanId }) {
   const [issues, setIssues] = useState(null);

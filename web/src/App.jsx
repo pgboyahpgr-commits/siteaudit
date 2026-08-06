@@ -5,6 +5,7 @@ import ScanPage from "./pages/ScanPage.jsx";
 import AuthPage from "./pages/AuthPage.jsx";
 import MyScansPage from "./pages/MyScansPage.jsx";
 import FaqPage from "./pages/FaqPage.jsx";
+import Reversiy from "./components/Reversiy.jsx";
 import { getToken, logout } from "./api.js";
 
 export default function App() {
@@ -72,6 +73,8 @@ export default function App() {
             <span className="hl">$0 budget</span> · JWT · bcrypt · SQLite · multi-AI fallback
           </span>
         </footer>
+
+        <Reversiy />
       </div>
     </>
   );
