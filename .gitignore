@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# Build output
+web/dist/
+*.tsbuildinfo
+
+# Environment & secrets
+server/.env
+*.local
+
+# Runtime data
+server/data/
+!server/data/.gitkeep
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Vercel/Netlify
+.vercel/
+.netlify/

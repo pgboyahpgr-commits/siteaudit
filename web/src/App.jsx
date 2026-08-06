@@ -1,0 +1,75 @@
+import { useState } from "react";
+import { Routes, Route, Link, useNavigate } from "react-router-dom";
+import HomePage from "./pages/HomePage.jsx";
+import ScanPage from "./pages/ScanPage.jsx";
+import AuthPage from "./pages/AuthPage.jsx";
+import MyScansPage from "./pages/MyScansPage.jsx";
+import { getToken, logout } from "./api.js";
+
+export default function App() {
+  const [authed, setAuthed] = useState(!!getToken());
+  const navigate = useNavigate();
+
+  function onAuthed() {
+    setAuthed(!!getToken());
+  }
+
+  function signOut() {
+    logout();
+    setAuthed(false);
+    navigate("/");
+  }
+
+  return (
+    <>
+      <div className="bg-grid" />
+      <div className="bg-noise" />
+      <div className="crt-vignette" />
+      <div className="scanlines" />
+      <div className="app">
+        <nav className="nav">
+          <Link to="/" className="brand">
+            <span className="brand-mark">▣</span>
+            <span>
+              <span className="brand-name">
+                SITE<em>AUDIT</em>
+              </span>
+              <span className="brand-sub">AI Security · Privacy · Trust Agent</span>
+            </span>
+          </Link>
+          <div className="nav-links">
+            <Link to="/" className="nav-pill">SCANNER</Link>
+            {authed ? (
+              <>
+                <Link to="/my" className="nav-pill">MY SCANS</Link>
+                <button className="nav-pill" onClick={signOut}>LOG OUT</button>
+              </>
+            ) : (
+              <Link to="/auth" className="nav-pill">SIGN IN</Link>
+            )}
+            <a className="nav-pill live" href="/">
+              <span className="dot" />
+              SYSTEM ACTIVE
+            </a>
+          </div>
+        </nav>
+
+        <Routes>
+          <Route path="/" element={<HomePage />} />
+          <Route path="/scan/:id" element={<ScanPage />} />
+          <Route path="/auth" element={<AuthPage onAuthed={onAuthed} />} />
+          <Route path="/my" element={<MyScansPage onAuthed={onAuthed} />} />
+        </Routes>
+
+        <footer className="footer">
+          <span>
+            SITEAUDIT v0.2 // <span className="hl">AI-powered security, privacy &amp; trust</span>
+          </span>
+          <span>
+            <span className="hl">$0 budget</span> · JWT · bcrypt · SQLite · multi-AI fallback
+          </span>
+        </footer>
+      </div>
+    </>
+  );
+}
