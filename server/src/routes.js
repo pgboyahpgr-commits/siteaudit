@@ -154,6 +154,30 @@ export function registerRoutes(app) {
     res.json({ settings: globalThis.__saUserSettings || {} });
   });
 
+  // ---- Test an API key ----
+  router.post("/settings/test-key", async (req, res) => {
+    const { provider, key } = req.body || {};
+    if (!provider || !key) return res.status(400).json({ error: "provider and key required" });
+    const tests = {
+      gemini: { url: "https://generativelanguage.googleapis.com/v1beta/models?key=" + key, okStatus: [200] },
+      openai: { url: "https://api.openai.com/v1/models", headers: { authorization: "Bearer " + key }, okStatus: [200] },
+      xai: { url: "https://api.x.ai/v1/models", headers: { authorization: "Bearer " + key }, okStatus: [200] },
+      anthropic: { url: "https://api.anthropic.com/v1/messages", headers: { "x-api-key": key, "anthropic-version": "2023-06-01" }, okStatus: [200, 400, 401] },
+      mistral: { url: "https://api.mistral.ai/v1/models", headers: { authorization: "Bearer " + key }, okStatus: [200] },
+      completions: { url: "https://completions.me/api/v1/models", headers: { authorization: "Bearer " + key }, okStatus: [200] },
+      nvidiaNim: { url: "https://integrate.api.nvidia.com/v1/models", headers: { authorization: "Bearer " + key }, okStatus: [200] },
+    };
+    const t = tests[provider];
+    if (!t) return res.status(400).json({ error: "unknown provider" });
+    try {
+      const r = await fetch(t.url, { headers: t.headers || {}, signal: AbortSignal.timeout(8000) });
+      if (t.okStatus.includes(r.status)) return res.json({ ok: true });
+      return res.status(400).json({ ok: false, status: r.status });
+    } catch (err) {
+      return res.status(400).json({ ok: false, error: err.message });
+    }
+  });
+
   // ---- Reversiy agent (floating AI companion on every page) ----
   router.post("/agent", async (req, res) => {
     const message = String(req.body?.message || "").trim().slice(0, 3000);

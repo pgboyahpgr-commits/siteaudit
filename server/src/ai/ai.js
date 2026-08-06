@@ -181,7 +181,7 @@ async function openAICompat({ url, key, model, system, user }) {
 }
 
 export function aiProviders() {
-  const defaultOrder = "gemini,pollinations,xai,completions,mistral,nim,openai,anthropic,lmstudio";
+  const defaultOrder = "lmstudio,gemini,xai,completions,pollinations";
   const order = (process.env.AI_PROVIDER || defaultOrder)
     .split(",")
     .map((s) => s.trim().toLowerCase())

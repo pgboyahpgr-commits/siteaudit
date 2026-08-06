@@ -78,6 +78,14 @@ export default function SettingsPage() {
     };
   }, [settings]);
 
+  // Auto-detect LM Studio models on page load if enabled
+  useEffect(() => {
+    if (settings.lmStudio.enabled) {
+      testLmStudio();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   function updateApiKey(key, value) {
     setSettings((prev) => ({
       ...prev,
