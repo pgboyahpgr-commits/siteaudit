@@ -24,6 +24,26 @@ function scrub(href) {
   }
 }
 
+const UTM_PARAMS = /^(?:utm_(?:source|medium|campaign|term|content|id)|fbclid|gclid|msclkid|ref|source)$/i;
+
+function normalizeForDedup(href) {
+  try {
+    const u = new URL(href);
+    u.hash = "";
+    u.searchParams.forEach((_, key) => {
+      if (UTM_PARAMS.test(key)) u.searchParams.delete(key);
+    });
+    if (u.hostname.startsWith("www.")) u.hostname = u.hostname.slice(4);
+    let path = u.pathname;
+    if (path.length > 1 && path.endsWith("/")) {
+      u.pathname = path.slice(0, -1);
+    }
+    return u.href;
+  } catch {
+    return href;
+  }
+}
+
 function extractAll(html, base) {
   const urls = new Set();
   const assets = new Set();
@@ -65,22 +85,25 @@ export function parseHtml(html, base) {
   };
 }
 
-export async function crawl(targetUrl, { maxPages = 25, concurrency = 4, pacingMs = 120, onProgress } = {}) {
+export async function crawl(targetUrl, { maxPages = 50, concurrency = 4, pacingMs = 120, maxSize = 400000, onProgress } = {}) {
   const start = normalizeUrl(targetUrl);
   if (!start) throw new Error("Invalid target URL");
 
   const queue = [start.href];
   const visited = new Set();
+  const discovered = new Set([normalizeForDedup(start.href)]);
   const pages = [];
   const jsFiles = [];
   const allAssets = new Set();
   const baseHost = start.hostname;
 
   const fetchPage = async (url) => {
-    if (visited.has(url)) return;
+    const dedupKey = normalizeForDedup(url);
+    if (visited.has(dedupKey)) return;
+    visited.add(dedupKey);
     visited.add(url);
     await sleep(pacingMs);
-    const res = await httpGet(url, { timeout: 15000 });
+    const res = await httpGet(url, { timeout: 20000 });
     const info = {
       url,
       status: res.status,
@@ -96,22 +119,26 @@ export async function crawl(targetUrl, { maxPages = 25, concurrency = 4, pacingM
       const parsed = parseHtml(res.text, url);
       info.title = parsed.title;
       info.generator = parsed.generator;
-      info.html = res.text.slice(0, 200000);
+      info.html = res.text.slice(0, maxSize);
 
       for (const a of parsed.assets) {
         allAssets.add(a);
         if (a.match(/\.js(\?|#|$)/i)) jsFiles.push(a);
       }
       for (const u of parsed.urls) {
-        if (sameHost(u, start.href) && !visited.has(u)) queue.push(u);
+        const norm = normalizeForDedup(u);
+        if (sameHost(u, start.href) && !discovered.has(norm)) {
+          discovered.add(norm);
+          queue.push(u);
+        }
       }
     }
     pages.push(info);
-    onProgress?.(pages.length);
+    onProgress?.({ crawled: pages.length, remaining: queue.length, discovered: discovered.size });
   };
 
   const workers = Array.from({ length: concurrency }, async () => {
-    while (queue.length && visited.size < maxPages + 1) {
+    while (queue.length && pages.length < maxPages) {
       const url = queue.shift();
       if (!url || visited.has(url)) continue;
       try {

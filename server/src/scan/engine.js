@@ -60,9 +60,13 @@ export async function runScan(scan, onProgress = () => {}) {
   onProgress(1, "Discovery", "Crawling pages and collecting source code...");
   let crawlResult = null;
   try {
+    const crawlMax = scan.crawlDepth || 50;
     crawlResult = await crawl(targetUrl, {
-      maxPages: scan.crawlDepth || 25,
+      maxPages: crawlMax,
       pacingMs: scan.pacingMs || 80,
+      onProgress: (p) => {
+        onProgress(1, "Discovery", `Crawled ${p.crawled}/${crawlMax} · ${p.remaining} queued · ${p.discovered} discovered`);
+      },
     });
     meta.pagesCrawled = crawlResult.pages.length;
     meta.jsFiles = crawlResult.jsFiles;
@@ -530,17 +534,19 @@ export async function runScan(scan, onProgress = () => {}) {
     /* non-fatal */
   }
 
+  meta.quickScanDone = true;
+
   // ---- Build source corpus (pages + JS) once, reused by endpoints + source phases ----
   const sources = allPages
     .map((pg) => ({ content: pg.html || "", url: pg.url, kind: "html" }))
     .filter((s) => s.content.length);
   let jsFetched = 0;
-  for (const js of meta.jsFiles.slice(0, 15)) {
+  for (const js of meta.jsFiles.slice(0, 25)) {
     const res = await httpGet(js, { timeout: 15000 });
     if (res.ok && res.text) {
-      sources.push({ content: res.text.slice(0, 600000), url: js, kind: "js" });
+      sources.push({ content: res.text.slice(0, 800000), url: js, kind: "js" });
       jsFetched++;
-      if (jsFetched >= 10) break;
+      if (jsFetched >= 15) break;
     }
   }
 
@@ -577,9 +583,9 @@ export async function runScan(scan, onProgress = () => {}) {
     const probeList = [...candidates.values()];
     const probed = [];
     let pi = 0;
-    for (const url of probeList.slice(0, 60)) {
+    for (const url of probeList.slice(0, 100)) {
       pi++;
-      onProgress(6, "Endpoints", `Probing ${pi}/${Math.min(probeList.length, 60)} endpoints...`);
+      onProgress(6, "Endpoints", `Probing ${pi}/${Math.min(probeList.length, 100)} endpoints...`);
       try {
         const res = await httpGet(url, { timeout: 8000 });
         const path = new URL(res.url || url).pathname;

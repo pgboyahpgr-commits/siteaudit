@@ -386,7 +386,7 @@ export async function checkExposedPaths(baseUrl, { onResult } = {}) {
   let done = 0;
   const checkOne = async (item) => {
     const url = new URL(item.path, origin).href;
-    const res = await httpGet(url, { timeout: 7000 });
+    const res = await httpGet(url, { timeout: 8000 });
     done++;
     onResult?.({ index: done, total: EXPOSED_PATHS.length, path: item.path, status: res.status });
     if (!res.ok || res.status === 404 || res.status === 0) return;

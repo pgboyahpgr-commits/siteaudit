@@ -37,6 +37,7 @@ export default function ScanPage() {
   const [fullError, setFullError] = useState("");
   const [saved, setSaved] = useState(false);
   const [showShare, setShowShare] = useState(false);
+  const [quickFindings, setQuickFindings] = useState(null);
   const termRef = useRef(null);
 
   useEffect(() => {
@@ -52,10 +53,14 @@ export default function ScanPage() {
         setAgentContext({ scanId: s.scanId, targetUrl: s.targetUrl });
         if (s.status === "completed" && s.findings?.length > 0) {
           saveScanToHistory(s);
+          setQuickFindings(null);
         }
         retries = 0;
         if (s.status === "queued" || s.status === "running") {
           timer = setTimeout(load, 1300);
+          if (s.meta?.quickScanDone && !quickFindings) {
+            api.getFindings(id).then((f) => setQuickFindings(f)).catch(() => {});
+          }
         }
       } catch (err) {
         if (stop) return;
@@ -186,6 +191,68 @@ export default function ScanPage() {
     }
   }
 
+  function generateShareImage() {
+    const canvas = document.createElement("canvas");
+    canvas.width = 800;
+    canvas.height = 400;
+    const ctx = canvas.getContext("2d");
+
+    const bgGrad = ctx.createLinearGradient(0, 0, 800, 400);
+    bgGrad.addColorStop(0, "#0a0a0f");
+    bgGrad.addColorStop(1, "#12122a");
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, 800, 400);
+
+    ctx.fillStyle = "#00d4ff";
+    ctx.font = "bold 36px sans-serif";
+    ctx.fillText("SITEAUDIT", 40, 60);
+
+    ctx.fillStyle = "rgba(0,212,255,0.5)";
+    ctx.font = "13px sans-serif";
+    ctx.fillText("AI Security Agent", 40, 82);
+
+    ctx.fillStyle = "#33ffa1";
+    ctx.font = "bold 100px sans-serif";
+    ctx.fillText(`${scan.score}/100`, 40, 210);
+
+    ctx.fillStyle = "rgba(255,255,255,0.45)";
+    ctx.font = "15px sans-serif";
+    ctx.fillText("Security Score", 40, 238);
+
+    const medium = counts.medium || 0;
+    const low = counts.low || 0;
+    ctx.fillStyle = "rgba(255,255,255,0.35)";
+    ctx.font = "13px sans-serif";
+    ctx.fillText(`${findings.length} findings \u00b7 ${medium} medium \u00b7 ${low} low`, 40, 340);
+
+    ctx.strokeStyle = "rgba(0,212,255,0.12)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(490, 40);
+    ctx.lineTo(490, 360);
+    ctx.stroke();
+
+    ctx.fillStyle = "#00d4ff";
+    ctx.font = "110px sans-serif";
+    ctx.fillText("\u25a3", 570, 170);
+
+    ctx.fillStyle = "rgba(255,255,255,0.65)";
+    ctx.font = "bold 20px sans-serif";
+    ctx.fillText("Scan yours free", 510, 240);
+
+    ctx.fillStyle = "rgba(255,255,255,0.35)";
+    ctx.font = "11px sans-serif";
+    ctx.fillText("siteaudit-six.vercel.app", 510, 262);
+
+    ctx.fillStyle = "rgba(255,255,255,0.15)";
+    ctx.font = "12px sans-serif";
+    ctx.fillText(`Scanned: ${scan.targetUrl}`, 40, 385);
+
+    const dataUrl = canvas.toDataURL("image/png");
+    setShareImage(dataUrl);
+    window.open(dataUrl, "_blank", "noopener");
+  }
+
   return (
     <>
       <div className="section-head">
@@ -275,12 +342,89 @@ export default function ScanPage() {
                 <div className="progress-fill" style={{ width: `${Math.max(4, pct)}%` }} />
               </div>
             </div>
+            {scan.meta?.quickScanDone && (
+              <div className="deep-scan-banner">
+                <span className="spinner" style={{ width: 12, height: 12, marginRight: 8 }} />
+                Quick scan complete — deep scan in progress (endpoints, source review, CVE matching)...
+              </div>
+            )}
             <div className="btn-row mt">
               <button className="btn btn-ghost btn-sm" onClick={() => setShowVerify(true)} disabled={scan.verified}>
                 🔒 VERIFY OWNERSHIP (WHILE IT SCANS)
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {running && scan.meta?.quickScanDone && quickFindings && (
+        <div className="mt">
+          <div className="section-head">
+            <h2>
+              PRELIMINARY FINDINGS ({quickFindings.length}) <span className="dim" style={{ fontSize: 13 }}>— deep scan still running</span>
+            </h2>
+          </div>
+          {quickFindings.length === 0 ? (
+            <div className="empty"><span className="big">:) </span>No findings yet from quick scan.</div>
+          ) : (
+            quickFindings.map((f) => (
+              <div key={f.id} className={`finding sev-${f.severity} ${expanded[f.id] ? "open" : ""}`}>
+                <div className="finding-head" onClick={() => setExpanded((p) => ({ ...p, [f.id]: !p[f.id] }))}>
+                  <span className="sev">{f.severity}</span>
+                  <div className="t">
+                    <h3>{f.title}</h3>
+                    <div className="meta">
+                      <span className="cat">{f.category}</span>
+                      {f.url}
+                    </div>
+                  </div>
+                  <span className="chev">▶</span>
+                </div>
+                {expanded[f.id] && (
+                  <div className="finding-body">
+                    {f.cveId && (
+                      <div className="block">
+                        <div className="label">CVE</div>
+                        <pre>{f.cveId}</pre>
+                      </div>
+                    )}
+                    {f.evidence && (
+                      <div className="block">
+                        <div className="label">Evidence</div>
+                        <pre>{f.evidence}</pre>
+                      </div>
+                    )}
+                    {f.description && (
+                      <div className="block">
+                        <div className="label">What this means</div>
+                        <p>{f.description}</p>
+                      </div>
+                    )}
+                    {f.fix && (
+                      <div className="block fix-box">
+                        <div className="label">How to fix</div>
+                        <p>{f.fix}</p>
+                      </div>
+                    )}
+                    {f.references?.length > 0 && (
+                      <div className="block refs">
+                        <div className="label">References</div>
+                        {f.references.map((r) => {
+                          let label = r;
+                          try { label = new URL(r).hostname; } catch { /* use raw string */ }
+                          return (
+                            <a key={r} href={r} target="_blank" rel="noreferrer">
+                              {label} ↗
+                            </a>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))
+          )}
         </div>
       )}
 
@@ -521,7 +665,7 @@ export default function ScanPage() {
             alignItems: "center",
             justifyContent: "center",
           }}
-          onClick={() => setShowShare(false)}
+          onClick={() => { setShowShare(false); setShareImage(null); }}
         >
           <div
             className="console"
@@ -532,7 +676,7 @@ export default function ScanPage() {
               <span>SHARE YOUR RESULT</span>
               <button
                 className="btn btn-ghost btn-sm"
-                onClick={() => setShowShare(false)}
+          onClick={() => { setShowShare(false); setShareImage(null); }}
                 style={{ fontSize: 18, lineHeight: 1, padding: "2px 8px" }}
               >
                 ✕
@@ -615,7 +759,29 @@ export default function ScanPage() {
                 >
                   📋 Copy Text
                 </button>
+                <button className="btn btn-primary btn-sm" onClick={generateShareImage}>
+                  🖼️ Share as Image
+                </button>
               </div>
+              {shareImage && (
+                <div style={{ marginTop: 16 }}>
+                  <img
+                    src={shareImage}
+                    alt="Share preview"
+                    style={{ width: "100%", borderRadius: 8, border: "1px solid rgba(0,212,255,0.2)" }}
+                  />
+                  <div className="btn-row" style={{ marginTop: 10 }}>
+                    <a
+                      className="btn btn-ghost btn-sm"
+                      href={shareImage}
+                      download={`siteaudit-${scan.scanId}.png`}
+                      style={{ textDecoration: "none" }}
+                    >
+                      📥 Download Image
+                    </a>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
