@@ -54,6 +54,8 @@ export default function SettingsPage() {
   const [lmTesting, setLmTesting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
+  const [availableModels, setAvailableModels] = useState([]);
+  const [showSetup, setShowSetup] = useState(false);
   const saveTimer = useRef(null);
 
   const clearToast = useCallback(() => {
@@ -121,20 +123,25 @@ export default function SettingsPage() {
     setLmStatus(null);
     try {
       const url = settings.lmStudio.baseUrl.replace(/\/+$/, "") + "/models";
-      const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+      const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
       if (res.ok) {
         const data = await res.json().catch(() => ({}));
         const modelList = data?.data || [];
+        const modelIds = modelList.map((m) => m.id).filter(Boolean);
+        setAvailableModels(modelIds);
         setLmStatus({
           reachable: true,
           models: modelList.length,
+          modelIds,
           message: `Connected · ${modelList.length} model${modelList.length !== 1 ? "s" : ""} available`,
         });
       } else {
         setLmStatus({ reachable: false, message: `HTTP ${res.status} — check your LM Studio instance` });
+        setAvailableModels([]);
       }
     } catch (err) {
-      setLmStatus({ reachable: false, message: err.name === "TimeoutError" ? "Connection timed out after 8s" : "LM Studio unreachable — is it running?" });
+      setLmStatus({ reachable: false, message: err.name === "TimeoutError" ? "Connection timed out after 10s" : "LM Studio unreachable — is it running?" });
+      setAvailableModels([]);
     } finally {
       setLmTesting(false);
     }
@@ -247,8 +254,63 @@ export default function SettingsPage() {
             <span className="t r" />
           </span>
           <span>LM STUDIO · LOCAL LLM</span>
+          {lmTesting ? (
+            <span style={{ marginLeft: "auto", fontSize: 10, color: "var(--amber)", display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ display: "inline-block", width: 8, height: 8, background: "var(--amber)", borderRadius: "50%", boxShadow: "0 0 6px var(--amber)" }} />
+              CHECKING...
+            </span>
+          ) : lmStatus ? (
+            <span style={{ marginLeft: "auto", fontSize: 10, color: lmStatus.reachable ? "var(--green)" : "var(--red)", display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ display: "inline-block", width: 8, height: 8, background: lmStatus.reachable ? "var(--green)" : "var(--red)", borderRadius: "50%", boxShadow: `0 0 6px ${lmStatus.reachable ? "var(--green)" : "var(--red)"}` }} />
+              {lmStatus.reachable ? "CONNECTED" : "NOT RUNNING"}
+            </span>
+          ) : (
+            <span style={{ marginLeft: "auto", fontSize: 10, color: "var(--dim-2)", display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ display: "inline-block", width: 8, height: 8, background: "var(--dim-2)", borderRadius: "50%" }} />
+              NOT TESTED
+            </span>
+          )}
         </div>
         <div className="console-body">
+          {/* Setup instructions */}
+          <div style={{ marginBottom: 18 }}>
+            <div
+              onClick={() => setShowSetup(!showSetup)}
+              style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: 8, marginBottom: showSetup ? 12 : 0 }}
+            >
+              <span style={{ color: "var(--cyan)", cursor: "pointer", fontSize: 11, letterSpacing: 2, textTransform: "uppercase" }}>
+                {showSetup ? "\u25BC" : "\u25B6"} SETUP GUIDE
+              </span>
+              <span className="small dim">how to get started</span>
+            </div>
+            {showSetup && (
+              <div className="instructions">
+                <p style={{ fontSize: 13, marginBottom: 10, color: "var(--text)" }}>
+                  To use your own local AI: Install LM Studio from{" "}
+                  <a href="https://lmstudio.ai" target="_blank" rel="noopener noreferrer" style={{ color: "var(--cyan)" }}>lmstudio.ai</a>
+                  , download any model, go to Developer tab → Start Server. The default URL is{" "}
+                  <code style={{ color: "var(--cyan)", background: "var(--bg)", padding: "2px 6px", border: "1px solid var(--line)" }}>
+                    http://localhost:1234/v1
+                  </code>
+                </p>
+                <p style={{ fontSize: 12, marginBottom: 12, color: "var(--dim)" }}>
+                  LM Studio provides an OpenAI-compatible API endpoint. We use this for chat completions.
+                </p>
+                <div style={{ fontSize: 10, letterSpacing: 2, color: "var(--dim-2)", marginBottom: 8, textTransform: "uppercase" }}>
+                  Quick Start
+                </div>
+                <ol style={{ marginLeft: 18, fontSize: 13, color: "var(--text)" }}>
+                  <li style={{ marginBottom: 6 }}>Install LM Studio</li>
+                  <li style={{ marginBottom: 6 }}>
+                    Download a model (e.g. <span style={{ color: "var(--cyan)" }}>qwen3-4b</span>)
+                  </li>
+                  <li style={{ marginBottom: 6 }}>Developer tab → Start Server</li>
+                  <li style={{ marginBottom: 6 }}>Paste URL below</li>
+                </ol>
+              </div>
+            )}
+          </div>
+
           {/* Enable toggle */}
           <div className="field">
             <div className="field-label">
@@ -294,8 +356,20 @@ export default function SettingsPage() {
           <div className="field">
             <div className="field-label">
               <span>Model Name</span>
-              <span className="small dim">optional override</span>
+              <span className="small dim">{availableModels.length > 0 ? `${availableModels.length} detected` : "optional override"}</span>
             </div>
+            {availableModels.length > 0 && (
+              <select
+                value={settings.lmStudio.model}
+                onChange={(e) => updateLmStudio("model", e.target.value)}
+                style={{ marginBottom: 8 }}
+              >
+                <option value="">— auto (use server default) —</option>
+                {availableModels.map((m) => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
+              </select>
+            )}
             <input
               className="url-input"
               type="text"
@@ -310,7 +384,7 @@ export default function SettingsPage() {
           {/* Test local connection */}
           <div className="btn-row">
             <button className="btn btn-ghost btn-sm" onClick={testLmStudio} disabled={lmTesting}>
-              {lmTesting ? "TESTING..." : "TEST LOCAL CONNECTION"}
+              {lmTesting ? "TESTING..." : "TEST CONNECTION & DETECT MODELS"}
             </button>
           </div>
 
@@ -332,6 +406,37 @@ export default function SettingsPage() {
               </span>
             </div>
           )}
+
+          {/* Model list if available */}
+          {lmStatus?.reachable && lmStatus?.modelIds?.length > 0 && (
+            <div className="mt" style={{ border: "1px solid var(--line)", padding: "10px 12px", maxHeight: 160, overflowY: "auto", background: "var(--bg)" }}>
+              <div style={{ fontSize: 10, letterSpacing: 2, color: "var(--dim)", marginBottom: 6, textTransform: "uppercase" }}>
+                AVAILABLE MODELS (click to select)
+              </div>
+              {lmStatus.modelIds.map((m) => (
+                <div
+                  key={m}
+                  onClick={() => updateLmStudio("model", m)}
+                  style={{
+                    fontSize: 12,
+                    color: settings.lmStudio.model === m ? "var(--green)" : "var(--cyan)",
+                    padding: "2px 0",
+                    cursor: "pointer",
+                    fontFamily: "var(--mono)",
+                  }}
+                >
+                  {m}{settings.lmStudio.model === m && (
+                    <span style={{ color: "var(--green)", marginLeft: 8, fontSize: 10 }}>← SELECTED</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Cost comparison note */}
+          <div style={{ marginTop: 14, padding: "10px 12px", border: "1px solid var(--line)", background: "var(--panel)", fontSize: 11, color: "var(--dim)", lineHeight: 1.6 }}>
+            <span style={{ color: "var(--green)" }}>&#9679;</span> LM Studio is completely free and runs on your hardware. No API keys, no rate limits, no data leaves your machine.
+          </div>
         </div>
       </div>
 

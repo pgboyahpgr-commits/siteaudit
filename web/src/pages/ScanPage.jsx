@@ -36,6 +36,7 @@ export default function ScanPage() {
   const [showVerify, setShowVerify] = useState(false);
   const [fullError, setFullError] = useState("");
   const [saved, setSaved] = useState(false);
+  const [showShare, setShowShare] = useState(false);
   const termRef = useRef(null);
 
   useEffect(() => {
@@ -374,6 +375,9 @@ export default function ScanPage() {
                 <button className="btn btn-ghost btn-sm" onClick={shareReport}>
                   ⇪ SHARE REPORT
                 </button>
+                <button className="btn btn-ghost btn-sm" onClick={() => setShowShare(true)}>
+                  📤 SHARE RESULT
+                </button>
                 {scan.verified ? (
                   <button className="btn btn-magenta btn-sm" onClick={runFull}>
                     🚀 RUN FULL CHECK
@@ -505,6 +509,117 @@ export default function ScanPage() {
       )}
 
       {showVerify && <VerificationModal scan={scan} onClose={() => setShowVerify(false)} onVerified={() => window.location.reload()} />}
+
+      {showShare && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.7)",
+            zIndex: 1000,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+          onClick={() => setShowShare(false)}
+        >
+          <div
+            className="console"
+            style={{ maxWidth: 520, width: "90%", maxHeight: "85vh", overflow: "auto", pointerEvents: "auto" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="console-title" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span>SHARE YOUR RESULT</span>
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={() => setShowShare(false)}
+                style={{ fontSize: 18, lineHeight: 1, padding: "2px 8px" }}
+              >
+                ✕
+              </button>
+            </div>
+            <div className="console-body">
+              <div className="dim small" style={{ marginBottom: 12 }}>
+                Spread the word about SiteAudit
+              </div>
+              {[
+                `I just audited my site with SiteAudit — score ${scan.score}/100. Try yours free at siteaudit-six.vercel.app 🔍`,
+                `Just reverse-engineered my website with SiteAudit and found ${counts.critical + counts.high} critical issues. Test your site: siteaudit-six.vercel.app 🛡️`,
+                `My VibeCheck trust score: ${scan.score}/100. Find out how trustworthy your site looks: siteaudit-six.vercel.app ✨`,
+                `Built a vibe-coded app? I tested mine with SiteAudit's AI scanner. Score: ${scan.score}/100. Test yours: siteaudit-six.vercel.app 🚀`,
+              ].map((text, i) => (
+                <div
+                  key={i}
+                  style={{
+                    background: "rgba(0,229,255,0.06)",
+                    border: "1px solid rgba(0,229,255,0.15)",
+                    borderRadius: 6,
+                    padding: "8px 12px",
+                    marginBottom: 8,
+                    fontSize: 12,
+                    lineHeight: 1.5,
+                    cursor: "pointer",
+                    transition: "background 0.15s",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = "rgba(0,229,255,0.12)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = "rgba(0,229,255,0.06)";
+                  }}
+                  onClick={(e) => {
+                    navigator.clipboard.writeText(text).then(() => {
+                      e.currentTarget.style.background = "rgba(0,229,255,0.2)";
+                      setTimeout(() => {
+                        e.currentTarget.style.background = "rgba(0,229,255,0.06)";
+                      }, 400);
+                    }).catch(() => {});
+                  }}
+                >
+                  {text}
+                </div>
+              ))}
+              <div className="btn-row" style={{ marginTop: 12 }}>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => {
+                    navigator.clipboard.writeText(`https://siteaudit-six.vercel.app/scan/${scan.scanId}`);
+                  }}
+                >
+                  📋 Copy Link
+                </button>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => {
+                    const t = `I just audited my site with SiteAudit — score ${scan.score}/100. Try yours free at https://siteaudit-six.vercel.app 🔍`;
+                    window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(t)}`, "_blank", "noopener");
+                  }}
+                >
+                  🐦 Share on X/Twitter
+                </button>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => {
+                    const t = `I just audited my site with SiteAudit — score ${scan.score}/100. Try yours free at https://siteaudit-six.vercel.app 🔍`;
+                    window.open(`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(`https://siteaudit-six.vercel.app/scan/${scan.scanId}`)}`, "_blank", "noopener");
+                  }}
+                >
+                  💼 Share on LinkedIn
+                </button>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => {
+                    const t = `I just audited my site with SiteAudit — score ${scan.score}/100. Try yours free at siteaudit-six.vercel.app 🔍`;
+                    navigator.clipboard.writeText(t);
+                  }}
+                >
+                  📋 Copy Text
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
