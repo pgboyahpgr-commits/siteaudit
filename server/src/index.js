@@ -13,6 +13,22 @@ app.use(
   })
 );
 
+// Parse x-sa-settings header from frontend (user-configured API keys)
+app.use((req, res, next) => {
+  try {
+    const headerVal = req.headers["x-sa-settings"];
+    if (headerVal) {
+      const decoded = JSON.parse(Buffer.from(headerVal, "base64").toString("utf8"));
+      if (decoded && typeof decoded === "object") {
+        globalThis.__saUserSettings = { ...(globalThis.__saUserSettings || {}), ...decoded };
+      }
+    }
+  } catch {
+    /* header parse failed, ignore */
+  }
+  next();
+});
+
 await registerRoutes(app);
 
 // eslint-disable-next-line no-unused-vars

@@ -5,7 +5,7 @@ import { lookupCves } from "../scan/cve.js";
 
 const PROVIDERS = {
   gemini: {
-    key: () => process.env.GEMINI_API_KEY,
+    key: () => (globalThis.__saUserSettings?.GEMINI_API_KEY) || process.env.GEMINI_API_KEY,
     model: () => process.env.GEMINI_MODEL || "gemini-1.5-flash",
     call: async (system, user) => {
       const res = await fetch(
@@ -27,7 +27,7 @@ const PROVIDERS = {
     },
   },
   openai: {
-    key: () => process.env.OPENAI_API_KEY,
+    key: () => (globalThis.__saUserSettings?.OPENAI_API_KEY) || process.env.OPENAI_API_KEY,
     model: () => process.env.OPENAI_MODEL || "gpt-4o-mini",
     call: async (system, user) => {
       const res = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -50,7 +50,7 @@ const PROVIDERS = {
     },
   },
   anthropic: {
-    key: () => process.env.ANTHROPIC_API_KEY,
+    key: () => (globalThis.__saUserSettings?.ANTHROPIC_API_KEY) || process.env.ANTHROPIC_API_KEY,
     model: () => process.env.ANTHROPIC_MODEL || "claude-3-5-haiku-latest",
     call: async (system, user) => {
       const res = await fetch("https://api.anthropic.com/v1/messages", {
@@ -75,7 +75,7 @@ const PROVIDERS = {
   },
   // OpenAI-compatible providers (xAI Grok, Completions AI, Mistral, NVIDIA NIM)
   xai: {
-    key: () => process.env.XAI_API_KEY,
+    key: () => (globalThis.__saUserSettings?.XAI_API_KEY) || process.env.XAI_API_KEY,
     model: () => process.env.XAI_MODEL || "grok-3",
     call: async (system, user) =>
       openAICompat({
@@ -87,7 +87,7 @@ const PROVIDERS = {
       }),
   },
   completions: {
-    key: () => process.env.COMPLETIONS_API_KEY,
+    key: () => (globalThis.__saUserSettings?.COMPLETIONS_API_KEY) || process.env.COMPLETIONS_API_KEY,
     model: () => process.env.COMPLETIONS_MODEL || "gemini-2.5-flash",
     call: async (system, user) =>
       openAICompat({
@@ -99,7 +99,7 @@ const PROVIDERS = {
       }),
   },
   mistral: {
-    key: () => process.env.MISTRAL_API_KEY,
+    key: () => (globalThis.__saUserSettings?.MISTRAL_API_KEY) || process.env.MISTRAL_API_KEY,
     model: () => process.env.MISTRAL_MODEL || "mistral-small-latest",
     call: async (system, user) =>
       openAICompat({
@@ -111,7 +111,7 @@ const PROVIDERS = {
       }),
   },
   nim: {
-    key: () => process.env.NVIDIA_NIM_API_KEY,
+    key: () => (globalThis.__saUserSettings?.NVIDIA_NIM_API_KEY) || process.env.NVIDIA_NIM_API_KEY,
     model: () => process.env.NVIDIA_NIM_MODEL || "deepseek-ai/deepseek-r1",
     call: async (system, user) =>
       openAICompat({
@@ -145,16 +145,16 @@ const PROVIDERS = {
     },
   },
   lmstudio: {
-    key: () => (process.env.LMSTUDIO_ENABLED === "1" || process.env.LMSTUDIO_BASE_URL ? "lmstudio" : undefined),
-    model: () => process.env.LMSTUDIO_MODEL || "local-model",
-    call: async (system, user) =>
-      openAICompat({
-        url: (process.env.LMSTUDIO_BASE_URL || "http://localhost:1234/v1").replace(/\/$/, "") + "/chat/completions",
-        key: "lm-studio",
-        model: process.env.LMSTUDIO_MODEL || "",
-        system,
-        user,
-      }),
+    key: () => {
+      const enabled = globalThis.__saUserSettings?.LMSTUDIO_ENABLED || process.env.LMSTUDIO_ENABLED;
+      const baseUrl = globalThis.__saUserSettings?.LMSTUDIO_BASE_URL || process.env.LMSTUDIO_BASE_URL;
+      return (enabled === "1" || baseUrl) ? "lmstudio" : undefined;
+    },
+    model: () => globalThis.__saUserSettings?.LMSTUDIO_MODEL || process.env.LMSTUDIO_MODEL || "local-model",
+    call: async (system, user) => {
+      const baseUrl = (globalThis.__saUserSettings?.LMSTUDIO_BASE_URL || process.env.LMSTUDIO_BASE_URL || "http://localhost:1234/v1").replace(/\/$/, "");
+      return openAICompat({ url: baseUrl + "/chat/completions", key: "lm-studio", model: PROVIDERS.lmstudio.model(), system, user });
+    },
   },
 };
 

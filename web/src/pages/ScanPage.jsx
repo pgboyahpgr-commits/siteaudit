@@ -356,7 +356,21 @@ export default function ScanPage() {
           )}
           {scan.meta?.endpoints?.length > 0 && <EndpointTable endpoints={scan.meta.endpoints} />}
 
-          {/* ---- FINDINGS (renders FIRST - before AI/heavy panels to guarantee visibility) ---- */}
+          <VisionPanel scanId={scan.scanId} />
+          <VideoGuides scanId={scan.scanId} />
+
+          {/* ---- AI ANALYSIS ---- */}
+          <div className="section-head">
+            <h2>
+              AI ANALYSIS <span className="dim" style={{ fontSize: 13 }}>· risk report · vibe check · fix plan</span>
+            </h2>
+          </div>
+          <AiPanels scanId={scan.scanId} />
+          <AdvisorChat scanId={scan.scanId} />
+
+          <HostInfoPanel scanId={scan.scanId} />
+
+          {/* ---- FINDINGS ---- */}
           <div className="section-head">
             <h2>FINDINGS ({findings.length})</h2>
             <div className="filters">
@@ -436,19 +450,6 @@ export default function ScanPage() {
               </div>
             ))
           )}
-
-          <HostInfoPanel scanId={scan.scanId} />
-          <VisionPanel scanId={scan.scanId} />
-          <VideoGuides scanId={scan.scanId} />
-
-          {/* ---- AI ANALYSIS ---- */}
-          <div className="section-head">
-            <h2>
-              AI ANALYSIS <span className="dim" style={{ fontSize: 13 }}>· risk report · vibe check · fix plan</span>
-            </h2>
-          </div>
-          <AiPanels scanId={scan.scanId} />
-          <AdvisorChat scanId={scan.scanId} />
         </>
       )}
 

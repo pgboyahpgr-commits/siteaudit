@@ -19,6 +19,8 @@ import { registerUser, loginUser, requireAuth } from "./auth.js";
 import { listUserScans, saveChatMessage, listChatMessages, dbKind, upsertScan } from "./db.js";
 import { newId } from "./store.js";
 
+const userSettings = {};
+
 const scanSchema = z.object({
   url: z.string().min(1).max(2048),
   mode: z.enum(["passive", "full"]).optional(),
@@ -135,6 +137,21 @@ export function registerRoutes(app) {
 
   router.get("/health", async (req, res) => {
     res.json({ ok: true, name: "siteaudit-api", time: new Date().toISOString() });
+  });
+
+  router.post("/settings", async (req, res) => {
+    const allowed = ["GEMINI_API_KEY","XAI_API_KEY","OPENAI_API_KEY","ANTHROPIC_API_KEY","COMPLETIONS_API_KEY","MISTRAL_API_KEY","NVIDIA_NIM_API_KEY","LMSTUDIO_ENABLED","LMSTUDIO_BASE_URL","LMSTUDIO_MODEL"];
+    for (const [k, v] of Object.entries(req.body || {})) {
+      if (allowed.includes(k) && typeof v === "string" && v.length > 0) {
+        userSettings[k] = v;
+      }
+    }
+    globalThis.__saUserSettings = userSettings;
+    res.json({ ok: true, count: Object.keys(userSettings).length });
+  });
+
+  router.get("/settings", async (req, res) => {
+    res.json({ settings: globalThis.__saUserSettings || {} });
   });
 
   // ---- Reversiy agent (floating AI companion on every page) ----

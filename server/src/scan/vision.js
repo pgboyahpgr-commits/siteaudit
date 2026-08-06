@@ -50,20 +50,45 @@ function heuristicUI(scan) {
   const html = (meta.vibeSources?.html || "") + (meta.tech?.map((t) => t.name).join(" ") || "");
   const hasViewport = /<meta[^>]+name=["']viewport["']/i.test(html);
   const hasMediaQueries = /@media[^{]+\{/i.test(meta.vibeSources?.js || "") || /@media[^{]+\{/i.test((scan._htmlProbe || "") + (meta.vibeSources?.html || ""));
-  const hasPlaceholder = /lorem ipsum|placeholder=|[0-9]+x[0-9]+\.(jpg|png|svg|webp)|dummy|mock|coming sooner/i.test(html);
-  const thin = (meta.titles || []).filter((t) => t).length === 0;
-  let desktop = 50;
-  if (hasPlaceholder) desktop -= 10;
-  if (thin) desktop -= 8;
-  if (hasMediaQueries) desktop += 6;
+  const hasPlaceholder = /lorem ipsum|placeholder=|[0-9]+x[0-9]+\.(jpg|png|svg|webp)|dummy|mock|coming soon|under construction/i.test(html);
+  const thin = (meta.titles || []).filter((t) => t && t.length > 5).length < 2;
+  const hasFavicon = /<link[^>]+rel=["'](?:shortcut )?icon["']/i.test(html);
+  const hasOgTags = /<meta[^>]+property=["']og:/i.test(html);
+  
+  let desktop = 52;
+  const strengths = [];
+  const improvements = [];
+  const vibes = [];
+  
+  if (hasPlaceholder) { desktop -= 10; vibes.push("Placeholder content visible"); improvements.push("Replace lorem ipsum & placeholder copy"); }
+  if (thin) { desktop -= 8; vibes.push("Very few page titles"); improvements.push("Add descriptive page titles"); }
+  if (hasMediaQueries) { desktop += 6; strengths.push("CSS media queries detected"); }
+  if (hasViewport) { desktop += 5; strengths.push("Viewport meta tag present"); } else { improvements.push("Add viewport meta tag for mobile"); }
+  if (hasFavicon) { desktop += 3; strengths.push("Favicon configured"); } else { improvements.push("Add a favicon"); }
+  if (hasOgTags) { desktop += 3; strengths.push("Open Graph tags present"); } else { improvements.push("Add Open Graph / social media meta tags"); }
+  
   const mobile = desktop + (hasViewport ? 14 : -20);
+  
   return {
     engine: "local",
-    desktop: { score: clamp(desktop), verdict: desktop >= 70 ? "Good" : desktop >= 45 ? "Needs polish" : "Unpolished", notes: [] },
-    mobile: { score: clamp(mobile), verdict: mobile >= 70 ? "Good" : mobile >= 45 ? "Needs polish" : "Not mobile-friendly", notes: [] },
+    captured: false,
+    provider: "local",
+    desktop: {
+      score: clamp(desktop),
+      verdict: desktop >= 70 ? "Good" : desktop >= 45 ? "Needs polish" : "Unpolished",
+      strengths: strengths.slice(0, 3),
+      improvements: improvements.slice(0, 3),
+    },
+    mobile: {
+      score: clamp(mobile),
+      verdict: mobile >= 70 ? "Good" : mobile >= 45 ? "Needs polish" : "Not mobile-friendly",
+      strengths: [],
+      improvements: improvements.slice(0, 3),
+    },
     responsive: hasViewport,
-    visualVibe: [],
+    visualVibe: vibes.slice(0, 5),
     mediaQueries: hasMediaQueries,
+    gradingNote: desktop >= 60 ? "Source-based analysis — site looks reasonably polished from its HTML markers." : "Source-based analysis — several quick wins available to improve visual trust.",
   };
 }
 

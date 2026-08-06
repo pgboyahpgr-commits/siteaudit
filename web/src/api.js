@@ -9,6 +9,12 @@ async function request(path, options = {}) {
   if (localStorage.getItem("sa_token")) {
     headers.authorization = `Bearer ${localStorage.getItem("sa_token")}`;
   }
+  const savedSettings = localStorage.getItem("sa_settings");
+  if (savedSettings) {
+    try {
+      headers["x-sa-settings"] = btoa(savedSettings);
+    } catch {}
+  }
   const isGetOrHead = !options.method || options.method === "GET" || options.method === "HEAD";
   const maxRetries = isGetOrHead ? 0 : 3;
   let lastErr = null;
@@ -81,6 +87,8 @@ export const api = {
   login: (email, password) => request("/auth/login", { method: "POST", body: { email, password } }),
   me: () => request("/me"),
   myScans: () => request("/my/scans"),
+  saveSettings: (settings) => request("/settings", { method: "POST", body: settings }),
+  getSettings: () => request("/settings"),
 };
 
 export function setToken(token) {
