@@ -87,11 +87,11 @@ export async function collectHostInfo(host) {
   }
 
   const primaryIp = info.ipv4[0] || info.ipv6[0] || host;
-  info.ports = {
-    http: await portOpen(primaryIp, 80),
-    https: await portOpen(primaryIp, 443),
-    ssh: await portOpen(primaryIp, 22),
-  };
+  const portList = [80, 443, 22, 8080, 8443, 3306, 5432, 27017, 6379, 21, 25];
+  const portNames = { 80: "http", 443: "https", 22: "ssh", 8080: "http-alt", 8443: "https-alt", 3306: "mysql", 5432: "postgres", 27017: "mongodb", 6379: "redis", 21: "ftp", 25: "smtp" };
+  info.ports = {};
+  const portResults = await Promise.all(portList.map((p) => portOpen(primaryIp, p)));
+  portList.forEach((p, i) => { info.ports[portNames[p]] = portResults[i]; });
   info.tls = await sslInfo(host);
 
   const score = sslInfoScore(info);

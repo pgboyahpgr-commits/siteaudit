@@ -119,6 +119,7 @@ function publicScan(scan) {
     verified: !!scan.verified,
     score: scan.score,
     reportId: scan.reportId || null,
+    findings: scan.findings || [],
     meta: slimMeta(scan.meta),
     error: scan.error || null,
     hasAi: !!scan.ai,
