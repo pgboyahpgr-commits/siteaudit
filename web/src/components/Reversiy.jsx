@@ -66,7 +66,18 @@ export default function Reversiy() {
       setMsgs((m) => [...m, { role: "assistant", content: r.reply }]);
       setProvider(r.provider);
     } catch {
-      setMsgs((m) => [...m, { role: "assistant", content: "Oops, I hit a glitch connecting to my brain. Try again in a sec!" }]);
+      // Local fallback answer if backend network has any glitch
+      let fallback = "Hey there! I live right here on SiteAudit 🛰️. Ask me anything about reading findings, score, VibeCheck, or ownership verification!";
+      const lower = q.toLowerCase();
+      if (/hi|hello|hey|yo|sup/.test(lower)) {
+        fallback = "Hey there! 👋 I'm Reversiy — your security sidekick. Paste a URL and hit RUN SCAN, then I'll help you understand findings and fix them!";
+      } else if (/verif/.test(lower)) {
+        fallback = "Verification proves site ownership! Put siteaudit-verify.txt in your public/ folder (Vercel) and redeploy, then we check it automatically.";
+      } else if (/vibe|trust/.test(lower)) {
+        fallback = "VibeCheck checks how AI-generated or template-y a site looks (placeholder text, free proxy backends, demo data).";
+      }
+      setMsgs((m) => [...m, { role: "assistant", content: fallback }]);
+      setProvider("local-fallback");
     } finally {
       setBusy(false);
     }
