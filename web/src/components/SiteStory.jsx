@@ -39,7 +39,7 @@ function detectTls(scan) {
   if (!scan?.meta) return { usesHttps: false, tlsInfo: "unknown" };
   const url = scan.targetUrl || "";
   const usesHttps = url.startsWith("https://");
-  const tls = scan.meta.tls;
+  const tls = scan.meta.hostInfo?.tls;
   if (!tls || !tls.version) return { usesHttps, tlsInfo: usesHttps ? "TLS version unknown" : "no TLS" };
   return { usesHttps, tlsInfo: `TLS ${tls.version}` };
 }
@@ -111,34 +111,19 @@ function buildLocalNarrative(scan) {
     }
   }
 
-  let lines = [];
-  lines.push(
-    `This site appears to be a ${siteType} hosted on ${hosting}. It was scanned on ${scanDate} and scored ${score}/100.`
-  );
-  lines.push("");
-  lines.push(
-    `The crawl discovered ${pagesCrawled} pages and ${endpointCount} endpoints. We detected ${techList} in the technology stack.`
-  );
-  lines.push("");
+  const httpsVerb = usesHttps ? "uses" : "doesn't use";
+
+  let narrative = `A ${siteType} hosted on ${hosting}, scanned ${scanDate} — scored ${score}/100. `;
 
   if (totalFindings > 0) {
-    lines.push(
-      `The scan found ${critical} critical, ${high} high-risk, ${medium} medium, and ${low} low-severity issues. ${scoreNote}`
-    );
+    narrative += `${critical} critical, ${high} high, ${medium} medium, ${low} low findings. ${scoreNote} `;
   } else {
-    lines.push("No security findings were detected — this is a clean scan.");
+    narrative += "No findings — clean scan. ";
   }
-  lines.push("");
 
-  lines.push(`Third-party services detected: ${serviceDesc}.`);
-  lines.push("");
+  narrative += `Tech stack: ${techList}. ${httpsVerb} HTTPS / ${tlsInfo}. ${headers.present}/${headers.total} security headers missing.`;
 
-  const httpsVerb = usesHttps ? "uses" : "doesn't use";
-  lines.push(
-    `The site ${httpsVerb} HTTPS with ${tlsInfo}. ${headers.present} of ${headers.total} recommended security headers are missing.`
-  );
-
-  return lines.join("\n");
+  return narrative;
 }
 
 export default function SiteStory({ scan }) {
@@ -195,7 +180,7 @@ export default function SiteStory({ scan }) {
         messages: [
           {
             role: "user",
-            content: `Write a 4-5 sentence plain English security summary of this website scan. Be concise and informative. Site: ${scan.targetUrl}, Score: ${scan.score}/100, Findings: ${summary}, Tech: ${tech}, Services: ${services}`,
+            content: `2-3 sentence security summary: ${scan.targetUrl} scored ${scan.score}/100. ${summary}. Tech: ${tech}. Services: ${services}.`,
           },
         ],
         model: "openai",
@@ -215,14 +200,19 @@ export default function SiteStory({ scan }) {
   }, [typingDone, scan]);
 
   return (
-    <div className="console">
+    <div className="console mt">
       <div className="console-title">
+        <span className="traffic">
+          <span className="t g" />
+          <span className="t a" />
+          <span className="t r" />
+        </span>
         <span>AI SITE STORY</span>
         {showAiBadge && (
           <span
             style={{
               marginLeft: 10,
-              fontSize: 11,
+              fontSize: 10,
               color: "#ffd700",
               background: "rgba(255,215,0,0.1)",
               padding: "2px 8px",
@@ -230,7 +220,7 @@ export default function SiteStory({ scan }) {
               border: "1px solid rgba(255,215,0,0.3)",
             }}
           >
-            ✨ enhanced by AI
+            ✨ AI-enhanced
           </span>
         )}
       </div>
