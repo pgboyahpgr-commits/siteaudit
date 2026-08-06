@@ -223,6 +223,28 @@ export function registerRoutes(app) {
     res.type("text/html").send(renderReport(scan, `${req.protocol}://${req.get("host")}`));
   });
 
+  // ---- YouTube fix guides for a scan's issues ----
+  router.get("/scan/:id/videos", async (req, res) => {
+    const scan = getScan(req.params.id);
+    if (!scan) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Scan not found." } });
+    if (scan.status !== "completed") return res.status(409).json({ error: { code: "NOT_READY", message: "Wait for the scan to finish before loading fix guides." } });
+
+    const { searchVideos, videosForIssues } = await import("./scan/ytsearch.js");
+
+    // Per-query search (used from individual findings)
+    if (typeof req.query.q === "string" && req.query.q.trim()) {
+      const q = req.query.q.trim().slice(0, 120);
+      const videos = await searchVideos(q, 4);
+      return res.json({ query: q, videos });
+    }
+
+    // Batch: one lookup per top issue, cached on the scan
+    if (scan.meta?.videos) return res.json({ issues: scan.meta.videos, fromCache: true });
+    const issues = await videosForIssues(scan.findings || [], scan.targetUrl, 5);
+    updateScan(scan.id, { meta: { ...scan.meta, videos: issues } });
+    return res.json({ issues, fromCache: false });
+  });
+
   // ---- AI analysis for a scan ----
   router.get("/scan/:id/ai", async (req, res) => {
     const scan = getScan(req.params.id);

@@ -7,6 +7,8 @@ import EndpointTable from "../components/EndpointTable.jsx";
 import AiPanels from "../components/AiPanels.jsx";
 import AdvisorChat from "../components/AdvisorChat.jsx";
 import HostInfoPanel from "../components/HostInfoPanel.jsx";
+import VideoGuides from "../components/VideoGuides.jsx";
+import FindingFixTools from "../components/FindingFixTools.jsx";
 import { downloadJSON, downloadCSV, downloadHTML } from "../report.js";
 import { SEV_ORDER } from "../theme.js";
 
@@ -342,6 +344,7 @@ export default function ScanPage() {
           {scan.meta?.endpoints?.length > 0 && <EndpointTable endpoints={scan.meta.endpoints} />}
 
           <HostInfoPanel scanId={scan.scanId} />
+          <VideoGuides scanId={scan.scanId} />
 
           {/* ---- AI ANALYSIS ---- */}
           <div className="section-head">
@@ -411,6 +414,7 @@ export default function ScanPage() {
                         <p>{f.fix}</p>
                       </div>
                     )}
+                    <FindingFixTools scanId={scan.scanId} finding={f} />
                     {f.references?.length > 0 && (
                       <div className="block refs">
                         <div className="label">References</div>

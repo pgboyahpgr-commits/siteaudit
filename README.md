@@ -68,6 +68,8 @@ their own site, in their own account, with their own data.
 | AI Fix Plan | Prioritized remediation steps (action + why), plus per-finding fixes |
 | VibeCheck | 0–100 "how vibe-coded" score, detected signals, AI recommendations |
 | Advisor Chat | Ask anything about your scan — grounded answers |
+| Video Fix Guides | Auto-searches YouTube (via a configurable `YT_SEARCH_API` proxy) for tutorial videos matching your top issues; every finding has a "▶ Watch tutorial" button |
+| AI Fix Prompt | One-click copy of a precise, paste-into-any-AI prompt that solves that exact finding (code/config + verification steps) |
 | Full Check | Active testing unlocked only after ownership verification |
 | Verification UX | One-click token download, "open verify URL" check, live instructions for file/meta/header/DNS/CNAME/email |
 | Sharing | Public shareable HTML report (`/scan/:id/report`), save-to-account button, JSON/CSV/HTML export |
