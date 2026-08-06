@@ -36,6 +36,7 @@ export default function ScanPage() {
   const [expanded, setExpanded] = useState({});
   const [showVerify, setShowVerify] = useState(false);
   const [fullError, setFullError] = useState("");
+  const [shareMsg, setShareMsg] = useState("");
   const [saved, setSaved] = useState(false);
   const [showShare, setShowShare] = useState(false);
   const [quickFindings, setQuickFindings] = useState(null);
@@ -545,6 +546,7 @@ export default function ScanPage() {
                 )}
               </div>
               {fullError && <div className="error-box">{fullError}</div>}
+              {shareMsg && <div className="mt" style={{ border: "1px solid var(--green)", color: "var(--green)", padding: "11px 13px", fontSize: 13 }}>{shareMsg}</div>}
             </div>
           </div>
 
@@ -565,7 +567,7 @@ export default function ScanPage() {
             </h2>
           </div>
           <AiPanels scanId={scan.scanId} />
-          <VibeDeepDive scan={scan} />
+          <VibeDeepDive scanId={scan.scanId} ai={scan.ai} meta={scan.meta} targetUrl={scan.targetUrl} score={scan.score} completedAt={scan.completedAt} />
           <AdvisorChat scanId={scan.scanId} />
 
           <HostInfoPanel scanId={scan.scanId} />
@@ -588,7 +590,7 @@ export default function ScanPage() {
           {sorted.length === 0 ? (
             <div className="empty">
               <span className="big">:) </span>
-              No {filter !== "all" ? filter : ""} findings.
+              No{filter !== "all" ? " " + filter : ""} findings.
             </div>
           ) : (
             sorted.map((f) => (
@@ -669,20 +671,11 @@ export default function ScanPage() {
 
       {showShare && (
         <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.7)",
-            zIndex: 1000,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
+          className="modal-backdrop"
           onClick={() => { setShowShare(false); setShareImage(null); }}
         >
           <div
-            className="console"
-            style={{ maxWidth: 520, width: "90%", maxHeight: "85vh", overflow: "auto", pointerEvents: "auto" }}
+            className="modal"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="console-title" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -778,7 +771,7 @@ export default function ScanPage() {
                 <button className="btn btn-ghost btn-sm" onClick={() => {
                   const badgeUrl = `https://siteaudit-backend-k96o.onrender.com/api/badge/${scan.host}.svg`;
                   navigator.clipboard.writeText(`<a href="https://siteaudit-six.vercel.app"><img src="${badgeUrl}" alt="SiteAudit Score ${scan.score}/100" /></a>`);
-                  setFullError("Badge embed code copied! Paste in your site's HTML.");
+                  setShareMsg("Badge embed code copied! Paste in your site's HTML.");
                 }}>
                   🏅 GET EMBED BADGE
                 </button>

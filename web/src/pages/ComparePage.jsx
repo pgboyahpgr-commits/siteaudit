@@ -225,6 +225,12 @@ export default function ComparePage() {
         </form>
       )}
 
+      { busy && !scanning && (
+        <div className="console mt" style={{ textAlign: "center", padding: 40 }}>
+          <div className="loading"><span className="spinner" /> Initializing scans for both sites...</div>
+        </div>
+      )}
+
       {/* Scanning progress */}
       {scanning && !showingResults && (
         <>
@@ -281,6 +287,7 @@ export default function ComparePage() {
               <span>report_diff.exe — comparison results</span>
             </div>
             <div className="console-body">
+              <div style={{ overflowX: "auto", width: "100%" }}>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                 <thead>
                   <tr>
@@ -319,13 +326,11 @@ export default function ComparePage() {
                   <tr><td style={{ padding: "6px 12px", fontSize: 10 }}>Shared</td><td colSpan={2} style={{ padding: "6px 12px" }}>{sharedSvcs.length ? sharedSvcs.map((n) => pill(n, true)) : <span className="dim small">—</span>}</td></tr>
                 </tbody>
               </table>
+              </div>
             </div>
           </div>
-
-          <div className="btn-row mt">
             <button className="btn btn-ghost btn-sm" onClick={reset}>← New Comparison</button>
             <button className="btn btn-primary btn-sm" onClick={exportImage}>🖼️ Export as Image</button>
-          </div>
 
           {shareImage && (
             <div className="console mt">

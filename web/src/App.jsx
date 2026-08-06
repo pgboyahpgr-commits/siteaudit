@@ -19,6 +19,14 @@ import { getToken, logout } from "./api.js";
 
 export default function App() {
   const [authed, setAuthed] = useState(!!getToken());
+  const [isLight, setIsLight] = useState(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("sa_theme");
+      if (saved === "light") { document.documentElement.classList.add("light-mode"); return true; }
+    }
+    return false;
+  });
+  const [navOpen, setNavOpen] = useState(false);
   const navigate = useNavigate();
 
   function onAuthed() {
@@ -38,7 +46,7 @@ export default function App() {
       <div className="crt-vignette" />
       <div className="scanlines" />
       <div className="app">
-        <nav className="nav">
+        <nav className={`nav ${navOpen ? "nav-open" : ""}`}>
           <Link to="/" className="brand">
             <span className="brand-mark">▣</span>
             <span>
@@ -48,33 +56,38 @@ export default function App() {
               <span className="brand-sub">AI Security · Privacy · Trust Agent</span>
             </span>
           </Link>
+          <button className="nav-hamburger" onClick={() => setNavOpen((o) => !o)}>
+            ☰
+          </button>
           <div className="nav-links">
-            <Link to="/" className="nav-pill">SCANNER</Link>
-            <Link to="/detector" className="nav-pill">AI IMAGE DETECTOR</Link>
-            <Link to="/url-engineer" className="nav-pill">URL ENGINEER</Link>
-            <Link to="/compare" className="nav-pill">⚔ COMPARE</Link>
-            <Link to="/settings" className="nav-pill">⚙ SETTINGS</Link>
-            <Link to="/guide" className="nav-pill">📖 GUIDE</Link>
-            <Link to="/faq" className="nav-pill">FAQ</Link>
+            <Link to="/" className="nav-pill" onClick={() => setNavOpen(false)}>SCANNER</Link>
+            <Link to="/detector" className="nav-pill" onClick={() => setNavOpen(false)}>AI IMAGE DETECTOR</Link>
+            <Link to="/url-engineer" className="nav-pill" onClick={() => setNavOpen(false)}>URL ENGINEER</Link>
+            <Link to="/compare" className="nav-pill" onClick={() => setNavOpen(false)}>⚔ COMPARE</Link>
+            <Link to="/settings" className="nav-pill" onClick={() => setNavOpen(false)}>⚙ SETTINGS</Link>
+            <Link to="/guide" className="nav-pill" onClick={() => setNavOpen(false)}>📖 GUIDE</Link>
+            <Link to="/faq" className="nav-pill" onClick={() => setNavOpen(false)}>FAQ</Link>
             {authed ? (
               <>
-                <Link to="/my" className="nav-pill">MY SCANS</Link>
-                <Link to="/history" className="nav-pill">📊 HISTORY</Link>
-                <button className="nav-pill" onClick={signOut}>LOG OUT</button>
+                <Link to="/my" className="nav-pill" onClick={() => setNavOpen(false)}>MY SCANS</Link>
+                <Link to="/history" className="nav-pill" onClick={() => setNavOpen(false)}>📊 HISTORY</Link>
+                <button className="nav-pill" onClick={() => { setNavOpen(false); signOut(); }}>LOG OUT</button>
               </>
             ) : (
-              <Link to="/auth" className="nav-pill">SIGN IN</Link>
+              <Link to="/auth" className="nav-pill" onClick={() => setNavOpen(false)}>SIGN IN</Link>
             )}
             <button className="nav-pill" onClick={() => {
-              document.documentElement.classList.toggle("light-mode");
-              localStorage.setItem("sa_theme", document.documentElement.classList.contains("light-mode") ? "light" : "dark");
+              const next = !isLight;
+              setIsLight(next);
+              document.documentElement.classList.toggle("light-mode", next);
+              localStorage.setItem("sa_theme", next ? "light" : "dark");
             }} style={{ cursor: "pointer" }}>
-              {typeof window !== "undefined" && document.documentElement.classList.contains("light-mode") ? "☀️" : "🌙"}
+              {isLight ? "☀️" : "🌙"}
             </button>
-            <a className="nav-pill live" href="/">
+            <Link to="/" className="nav-pill live">
               <span className="dot" />
               SYSTEM ACTIVE
-            </a>
+            </Link>
           </div>
         </nav>
 
