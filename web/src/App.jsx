@@ -7,6 +7,10 @@ import MyScansPage from "./pages/MyScansPage.jsx";
 import FaqPage from "./pages/FaqPage.jsx";
 import DetectorPage from "./pages/DetectorPage.jsx";
 import SettingsPage from "./pages/SettingsPage.jsx";
+import TermsPage from "./pages/TermsPage.jsx";
+import PrivacyPage from "./pages/PrivacyPage.jsx";
+import GuidePage from "./pages/GuidePage.jsx";
+import ScanHistoryPage from "./pages/ScanHistoryPage.jsx";
 import Reversiy from "./components/Reversiy.jsx";
 import { getToken, logout } from "./api.js";
 
@@ -45,10 +49,12 @@ export default function App() {
             <Link to="/" className="nav-pill">SCANNER</Link>
             <Link to="/detector" className="nav-pill">AI IMAGE DETECTOR</Link>
             <Link to="/settings" className="nav-pill">⚙ SETTINGS</Link>
+            <Link to="/guide" className="nav-pill">📖 GUIDE</Link>
             <Link to="/faq" className="nav-pill">FAQ</Link>
             {authed ? (
               <>
                 <Link to="/my" className="nav-pill">MY SCANS</Link>
+                <Link to="/history" className="nav-pill">📊 HISTORY</Link>
                 <button className="nav-pill" onClick={signOut}>LOG OUT</button>
               </>
             ) : (
@@ -69,14 +75,16 @@ export default function App() {
           <Route path="/auth" element={<AuthPage onAuthed={onAuthed} />} />
           <Route path="/my" element={<MyScansPage onAuthed={onAuthed} />} />
           <Route path="/faq" element={<FaqPage />} />
+          <Route path="/terms" element={<TermsPage />} />
+          <Route path="/privacy" element={<PrivacyPage />} />
+          <Route path="/guide" element={<GuidePage />} />
+          <Route path="/history" element={<ScanHistoryPage />} />
         </Routes>
 
         <footer className="footer">
+          <span>SITEAUDIT v0.3 // <span className="hl">AI-powered security, privacy &amp; trust</span></span>
           <span>
-            SITEAUDIT v0.2 // <span className="hl">AI-powered security, privacy &amp; trust</span>
-          </span>
-          <span>
-            <span className="hl">$0 budget</span> · JWT · bcrypt · SQLite · multi-AI fallback
+            <Link to="/terms" className="hl">Terms</Link> · <Link to="/privacy" className="hl">Privacy</Link>
           </span>
         </footer>
 

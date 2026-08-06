@@ -13,6 +13,7 @@ import VisionPanel from "../components/VisionPanel.jsx";
 import { downloadJSON, downloadCSV, downloadHTML } from "../report.js";
 import { SEV_ORDER } from "../theme.js";
 import { setAgentContext } from "../agentContext.js";
+import { saveScanToHistory } from "../scanHistory.js";
 
 const PHASE_LINE = {
   discovery: ["[phase:discovery]", "[crawl]", "Crawling pages, robots.txt & collecting source..."],
@@ -48,6 +49,9 @@ export default function ScanPage() {
         setScan(s);
         setError("");
         setAgentContext({ scanId: s.scanId, targetUrl: s.targetUrl });
+        if (s.status === "completed" && s.findings?.length > 0) {
+          saveScanToHistory(s);
+        }
         retries = 0;
         if (s.status === "queued" || s.status === "running") {
           timer = setTimeout(load, 1300);
