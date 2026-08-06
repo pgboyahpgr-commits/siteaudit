@@ -9,28 +9,41 @@ services:
     plan: free
     rootDir: server
     buildCommand: npm ci --omit=dev
-    startCommand: node --env-file-if-exists=.env src/index.js
+    startCommand: node src/index.js
     healthCheckPath: /api/health
     envVars:
       - key: NODE_VERSION
         value: 22
       - key: PORT
         value: 10000
+      - key: HOST
+        value: 0.0.0.0
       - key: JWT_SECRET
         generateValue: true
+      - key: JWT_EXPIRES
+        value: 30d
       - key: CORS_ORIGIN
-        value: https://siteaudit-frontend.vercel.app
+        value: https://siteaudit-six.vercel.app,http://localhost:5173,http://localhost:4173
       - key: AI_PROVIDER
-        value: gemini,xai,completions,mistral,nim,openai,anthropic,lmstudio
+        value: gemini,xai,completions,pollinations
       - key: GEMINI_API_KEY
         sync: false
       - key: GEMINI_MODEL
         value: gemini-2.5-flash
       - key: XAI_API_KEY
         sync: false
+      - key: XAI_MODEL
+        value: grok-3
+      - key: COMPLETIONS_API_KEY
+        sync: false
+      - key: COMPLETIONS_BASE_URL
+        value: https://completions.me/api/v1
+      - key: COMPLETIONS_MODEL
+        value: gemini-2.5-flash
       - key: YT_SEARCH_API
         value: https://ytapis.djalokyt27.workers.dev
       - key: SCREENSHOT_API
         value: https://image.thum.io/get/width
       - key: DATABASE_URL
+        value: postgresql://postgres.kdayneydbzzmkaoiwcay:djalok5630T@aws-0-ap-south-1.pooler.supabase.com:5432/postgres
         sync: false

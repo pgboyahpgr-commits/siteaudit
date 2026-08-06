@@ -50,7 +50,7 @@ export function createScan(data) {
   const scan = {
     id: newId("sc"),
     status: "queued",
-    progress: { phase: "queued", phaseIndex: 0, phasesTotal: 6, message: "Queued..." },
+    progress: { phase: "queued", phaseIndex: 0, phasesTotal: 8, message: "Queued..." },
     findings: [],
     score: null,
     verified: false,

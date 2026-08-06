@@ -1,23 +1,63 @@
 const BASE = import.meta.env.VITE_API_URL || "/api";
 
+async function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
 async function request(path, options = {}) {
   const headers = { "content-type": "application/json", ...(options.headers || {}) };
   if (localStorage.getItem("sa_token")) {
     headers.authorization = `Bearer ${localStorage.getItem("sa_token")}`;
   }
-  const res = await fetch(`${BASE}${path}`, {
-    ...options,
-    headers,
-    body: options.body ? JSON.stringify(options.body) : undefined,
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    const err = new Error(data?.error?.message || `Request failed (${res.status})`);
-    err.code = data?.error?.code;
-    err.status = res.status;
-    throw err;
+  const isGetOrHead = !options.method || options.method === "GET" || options.method === "HEAD";
+  const maxRetries = isGetOrHead ? 0 : 3;
+  let lastErr = null;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 45000);
+      const res = await fetch(`${BASE}${path}`, {
+        ...options,
+        headers,
+        body: options.body ? JSON.stringify(options.body) : undefined,
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const err = new Error(data?.error?.message || `Request failed (${res.status})`);
+        err.code = data?.error?.code;
+        err.status = res.status;
+        throw err;
+      }
+      return data;
+    } catch (err) {
+      lastErr = err;
+      if (err.name === "AbortError") {
+        lastErr = new Error("The server is waking up from sleep. Retrying...");
+      }
+      if (attempt < maxRetries) {
+        const delay = Math.min(2000 * (attempt + 1), 8000);
+        if (attempt > 0 && !isGetOrHead && lastErr.message.includes("waking")) {
+          await sleep(delay);
+        }
+        await sleep(800);
+      }
+    }
   }
-  return data;
+
+  throw lastErr || new Error("Failed to fetch. Please try again.");
+}
+
+export async function warmUpBackend() {
+  try {
+    await request("/health");
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export const api = {

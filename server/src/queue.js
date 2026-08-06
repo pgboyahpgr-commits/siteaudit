@@ -30,9 +30,9 @@ async function processQueue() {
       const phaseNames = ["discovery", "fingerprint", "headers", "tls", "enumeration", "source"];
       try {
         const result = await runScan(scan, (phaseIndex, phase, message) => {
-          updateScan(id, {
-            progress: { phase, phaseIndex, phasesTotal: 6, message },
-          });
+        updateScan(id, {
+          progress: { phase, phaseIndex, phasesTotal: 8, message },
+        });
         });
         setScanFindings(id, result.findings, result.score);
         const report = saveReport(id, ["json", "html"]);
@@ -47,7 +47,7 @@ async function processQueue() {
         updateScan(id, {
           status: "failed",
           error: err.message || "Scan failed",
-          progress: { phase: "failed", phaseIndex: 0, phasesTotal: 6, message: "Scan failed: " + (err.message || "unknown error") },
+          progress: { phase: "failed", phaseIndex: 0, phasesTotal: 8, message: "Scan failed: " + (err.message || "unknown error") },
         });
       }
     }

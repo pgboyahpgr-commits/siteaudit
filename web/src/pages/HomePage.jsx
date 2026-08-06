@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { HERO_ART } from "../theme.js";
-import { api } from "../api.js";
+import { api, warmUpBackend } from "../api.js";
 
 export default function HomePage() {
   const navigate = useNavigate();
@@ -12,6 +12,11 @@ export default function HomePage() {
   const [consentTouched, setConsentTouched] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [backendReady, setBackendReady] = useState(true);
+
+  useEffect(() => {
+    warmUpBackend().then((ok) => setBackendReady(ok)).catch(() => {});
+  }, []);
 
   async function startScan(e) {
     e.preventDefault();
@@ -39,7 +44,12 @@ export default function HomePage() {
       });
       navigate(`/scan/${scan.scanId}`);
     } catch (err) {
-      setError(err.message);
+      const msg = err.message || "Failed to connect to the server.";
+      if (msg.includes("fetch") || msg.includes("network") || msg.includes("waking")) {
+        setError("The scan server is waking up from sleep mode. Please wait a few seconds and try again.");
+      } else {
+        setError(msg);
+      }
       setBusy(false);
     }
   }
@@ -124,9 +134,12 @@ export default function HomePage() {
           </div>
 
           <button className="btn btn-primary" type="submit" disabled={busy}>
-            {busy ? "INITIALIZING..." : "▸ RUN SCAN"}
+            {busy ? "INITIALIZING..." : backendReady ? "▸ RUN SCAN" : "▸ RUN SCAN (server waking...)"}
           </button>
 
+          {!backendReady && !error && (
+            <div className="info-box" style={{ marginTop: 8 }}>i Scan server is waking up from sleep. First scan may take ~30 seconds.</div>
+          )}
           {error && <div className="error-box">! {error}</div>}
         </div>
       </form>

@@ -40,17 +40,26 @@ export default function ScanPage() {
   useEffect(() => {
     let stop = false;
     let timer;
+    let retries = 0;
     const load = async () => {
       try {
         const s = await api.getScan(id);
         if (stop) return;
         setScan(s);
+        setError("");
         setAgentContext({ scanId: s.scanId, targetUrl: s.targetUrl });
+        retries = 0;
         if (s.status === "queued" || s.status === "running") {
           timer = setTimeout(load, 1300);
         }
       } catch (err) {
-        if (!stop) setError(err.message);
+        if (stop) return;
+        if (retries < 3) {
+          retries++;
+          timer = setTimeout(load, 2000 * retries);
+        } else {
+          setError(err.message);
+        }
       }
     };
     load();
