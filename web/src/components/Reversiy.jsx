@@ -70,6 +70,42 @@ export default function Reversiy() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(msgs.slice(-20)));
   }, [msgs]);
 
+  function getLmSettings() {
+    try {
+      const raw = localStorage.getItem("sa_settings");
+      if (!raw) return null;
+      const s = JSON.parse(raw);
+      if (s?.lmStudio?.enabled && s.lmStudio.baseUrl) {
+        return { baseUrl: s.lmStudio.baseUrl.replace(/\/+$/, ""), model: s.lmStudio.model || "local-model" };
+      }
+    } catch { /* ignore */ }
+    return null;
+  }
+
+  async function callLmStudioDirect(q) {
+    const lm = getLmSettings();
+    if (!lm) return null;
+    const system = "You are Reversiy, a friendly AI security companion on SiteAudit. Be concise, warm, practical. Keep answers 2-5 sentences. You can use emojis.";
+    const body = JSON.stringify({
+      model: lm.model,
+      messages: [
+        { role: "system", content: system },
+        { role: "user", content: q },
+      ],
+      temperature: 0.7,
+      max_tokens: 500,
+    });
+    const res = await fetch(`${lm.baseUrl}/chat/completions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body,
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    return data?.choices?.[0]?.message?.content || "";
+  }
+
   const send = useCallback(async (text) => {
     const q = (text ?? input).trim();
     if (!q || busy) return;
@@ -78,6 +114,24 @@ export default function Reversiy() {
     setMsgs(next);
     setBusy(true);
     const history = next.slice(-8).map((m) => ({ role: m.role, content: m.content }));
+
+    // Try LM Studio directly from browser first (local machine)
+    const lm = getLmSettings();
+    if (lm) {
+      try {
+        const reply = await callLmStudioDirect(q);
+        if (reply) {
+          setMsgs((m) => [...m, { role: "assistant", content: reply, ts: Date.now() }]);
+          setProvider("lmstudio");
+          setBusy(false);
+          return;
+        }
+      } catch (err) {
+        console.log("[Reversiy] LM Studio direct call failed, falling back to server:", err.message);
+      }
+    }
+
+    // Fall back to server-side API
     try {
       const r = await api.agent(q, agentContext.scanId, history);
       setMsgs((m) => [...m, { role: "assistant", content: r.reply, ts: Date.now() }]);
@@ -116,22 +170,37 @@ export default function Reversiy() {
     return "I can help with: reading scan findings & scores, VibeCheck explanations, ownership verification, fix guides, how SiteAudit works, and general web security. Open a scan and ask me 'what should I fix first?' 🤖";
   }
 
+  function greet() {
+    setGreeted(true);
+    setBusy(true);
+    const doGreet = async () => {
+      // Try LM Studio direct first
+      const lm = getLmSettings();
+      if (lm) {
+        try {
+          const reply = await callLmStudioDirect("Hi! Introduce yourself super briefly and tell me the best thing to do first on this page.");
+          if (reply) { setMsgs([{ role: "assistant", content: reply, ts: Date.now() }]); setProvider("lmstudio"); setBusy(false); return; }
+        } catch (err) { console.log("[Reversiy] LM Studio greet failed:", err.message); }
+      }
+      try {
+        const r = await api.agent("Hi! Introduce yourself super briefly and tell me the best thing to do first on this page.", agentContext.scanId, []);
+        setMsgs([{ role: "assistant", content: r.reply, ts: Date.now() }]);
+        setProvider(r.provider || "");
+      } catch {
+        setMsgs([{ role: "assistant", content: "Hey! 👋 I'm Reversiy — your security sidekick on every page. Paste a URL on the home page and hit RUN SCAN to get started! Ask me anything about security, findings, or how SiteAudit works.", ts: Date.now() }]);
+        setProvider("local-fallback");
+      } finally {
+        setBusy(false);
+      }
+    };
+    doGreet();
+  }
+
   function toggle() {
     setOpen((o) => {
       const next = !o;
       if (next && !greeted && msgs.length === 0) {
-        setGreeted(true);
-        setBusy(true);
-        api.agent("Hi! Introduce yourself super briefly and tell me the best thing to do first on this page.", agentContext.scanId, [])
-          .then((r) => {
-            setMsgs([{ role: "assistant", content: r.reply, ts: Date.now() }]);
-            setProvider(r.provider || "");
-          })
-          .catch(() => {
-            setMsgs([{ role: "assistant", content: "Hey! 👋 I'm Reversiy — your security sidekick on every page. Paste a URL on the home page and hit RUN SCAN to get started! Ask me anything about security, findings, or how SiteAudit works.", ts: Date.now() }]);
-            setProvider("local-fallback");
-          })
-          .finally(() => setBusy(false));
+        greet();
       }
       return next;
     });

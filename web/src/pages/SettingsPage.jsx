@@ -204,20 +204,29 @@ export default function SettingsPage() {
     setLmChatMessages(p => [...p, { role: "user", content: msg }]);
     setLmChatBusy(true);
     try {
-      const headers = { "content-type": "application/json" };
-      const savedSettings = localStorage.getItem("sa_settings");
-      if (savedSettings) {
-        try { headers["x-sa-settings"] = btoa(savedSettings); } catch {}
-      }
-      const res = await fetch("/api/agent", {
+      // Call LM Studio directly from browser (bypasses cloud backend)
+      const baseUrl = settings.lmStudio.baseUrl.replace(/\/+$/, "");
+      const model = settings.lmStudio.model || "local-model";
+      const res = await fetch(`${baseUrl}/chat/completions`, {
         method: "POST",
-        headers,
-        body: JSON.stringify({ message: msg, history: lmChatMessages.slice(-4) }),
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: "system", content: "You are a helpful AI test chat. Be brief and friendly." },
+            { role: "user", content: msg },
+          ],
+          temperature: 0.7,
+          max_tokens: 300,
+        }),
+        signal: AbortSignal.timeout(15000),
       });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      setLmChatMessages(p => [...p, { role: "assistant", content: data.reply, provider: data.provider || "unknown" }]);
+      const reply = data?.choices?.[0]?.message?.content || "(empty response)";
+      setLmChatMessages(p => [...p, { role: "assistant", content: reply, provider: "lmstudio" }]);
     } catch (err) {
-      setLmChatMessages(p => [...p, { role: "assistant", content: "Connection failed: " + err.message, provider: "error" }]);
+      setLmChatMessages(p => [...p, { role: "assistant", content: "LM Studio error: " + err.message + ". Make sure LM Studio is running and the Server is started.", provider: "error" }]);
     } finally {
       setLmChatBusy(false);
     }
