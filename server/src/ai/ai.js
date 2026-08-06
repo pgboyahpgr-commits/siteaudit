@@ -466,8 +466,40 @@ export async function agentReply({ message, history = [], context = null }) {
   if (!aiEnabled()) return { reply: localAgentReply(message), provider: "local" };
   try {
     const { text, provider } = await callLLM(system, user);
-    return { reply: text.trim(), provider };
+    const reply = text.trim();
+    // Filter junk/joke responses from free AI services
+    if (isJunkResponse(reply)) {
+      return { reply: localAgentReply(message), provider: `local (filtered ${provider})` };
+    }
+    return { reply, provider };
   } catch (err) {
     return { reply: localAgentReply(message), provider: `local (${err.message})` };
   }
+}
+
+function isJunkResponse(text) {
+  if (!text || text.length < 10) return true;
+  const lower = text.toLowerCase();
+  const junkPatterns = [
+    "never gonna give you up",
+    "rick roll",
+    "rick astley",
+    "i'm sorry, i cannot",
+    "i cannot fulfill",
+    "as an ai language model",
+    "i am not able to",
+    "i'm unable to",
+    "as an ai,",
+    "i apologize, but",
+  ];
+  for (const p of junkPatterns) {
+    if (lower.includes(p)) return true;
+  }
+  // Reject responses that are just lyrics/song snippets (very repetitive text)
+  const words = lower.split(/\s+/);
+  if (words.length > 5 && words.length < 30) {
+    const uniqueWords = new Set(words);
+    if (uniqueWords.size < words.length * 0.4) return true;
+  }
+  return false;
 }

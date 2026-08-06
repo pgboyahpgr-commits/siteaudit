@@ -25,7 +25,8 @@ CREATE TABLE IF NOT EXISTS scans (
   score INTEGER,
   verified INTEGER DEFAULT 0,
   created_at TEXT NOT NULL,
-  completed_at TEXT
+  completed_at TEXT,
+  data TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_scans_user ON scans(user_id);
 CREATE TABLE IF NOT EXISTS chat_messages (
@@ -40,11 +41,11 @@ CREATE INDEX IF NOT EXISTS idx_chat_scan ON chat_messages(scan_id);
 
 export function upsertScan(scan) {
   const stmt = db.prepare(`
-    INSERT INTO scans (id, user_id, target_url, mode, status, score, verified, created_at, completed_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO scans (id, user_id, target_url, mode, status, score, verified, created_at, completed_at, data)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       status=excluded.status, score=excluded.score, verified=excluded.verified, completed_at=excluded.completed_at,
-      user_id=excluded.user_id
+      user_id=excluded.user_id, data=COALESCE(excluded.data, scans.data)
   `);
   stmt.run(
     scan.id,
@@ -55,8 +56,15 @@ export function upsertScan(scan) {
     scan.score ?? null,
     scan.verified ? 1 : 0,
     scan.createdAt,
-    scan.completedAt
+    scan.completedAt,
+    JSON.stringify(scan)
   );
+}
+
+export function getScanData(id) {
+  const row = db.prepare("SELECT data FROM scans WHERE id = ?").get(id);
+  if (!row || !row.data) return null;
+  try { return JSON.parse(row.data); } catch { return null; }
 }
 
 export function listUserScans(userId, limit = 50) {

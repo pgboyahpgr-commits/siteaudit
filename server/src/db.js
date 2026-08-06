@@ -21,6 +21,7 @@ export const upsertScan = (a) => safe("upsertScan", a);
 export const listUserScans = (a, b) => safe("listUserScans", a, b);
 export const saveChatMessage = (a) => safe("saveChatMessage", a);
 export const listChatMessages = (a, b) => safe("listChatMessages", a, b);
+export const getScanData = (a) => safe("getScanData", a);
 
 export function dbKind() {
   return process.env.DATABASE_URL ? "supabase" : "sqlite";
