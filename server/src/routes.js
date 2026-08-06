@@ -125,6 +125,7 @@ function publicScan(scan) {
     meta: slimMeta(scan.meta),
     error: scan.error || null,
     hasAi: !!scan.ai,
+    ai: scan.ai || null,
     ownerId: scan.userId || null,
     findingsSummary: counts,
     createdAt: scan.createdAt,
