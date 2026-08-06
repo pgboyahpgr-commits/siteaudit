@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { SEV_ORDER } from "../theme.js";
+import ScanDiff from "../components/ScanDiff.jsx";
 
 const STORAGE_KEY = "sa_scan_history";
 
@@ -33,11 +34,6 @@ function scoreColor(score) {
   if (score >= 50) return "var(--amber)";
   if (score >= 30) return "var(--amber)";
   return "var(--red)";
-}
-
-function severityColor(sev) {
-  const map = { critical: "var(--red)", high: "var(--magenta)", medium: "var(--amber)", low: "var(--cyan)", info: "var(--dim)" };
-  return map[sev] || "var(--dim)";
 }
 
 function formatDate(ts) {
@@ -87,24 +83,6 @@ export default function ScanHistoryPage() {
   const compareA = scans.find((s) => s.id === selected[0]);
   const compareB = scans.find((s) => s.id === selected[1]);
 
-  function countSeverity(findings, sev) {
-    return (findings || []).filter((f) => f.severity === sev).length;
-  }
-
-  function renderCompareRow(label, aVal, bVal, colorFn) {
-    const aColor = colorFn ? colorFn(aVal) : "var(--text)";
-    const bColor = colorFn ? colorFn(bVal) : "var(--text)";
-    return (
-      <div className="hi-row" key={label}>
-        <span className="hi-k">{label}</span>
-        <span style={{ display: "flex", gap: 20 }}>
-          <span style={{ color: aColor, minWidth: 60 }}>{aVal ?? "—"}</span>
-          <span style={{ color: bColor, minWidth: 60 }}>{bVal ?? "—"}</span>
-        </span>
-      </div>
-    );
-  }
-
   return (
     <>
       <div className="section-head">
@@ -143,40 +121,7 @@ export default function ScanHistoryPage() {
         <>
           {/* ---- Compare Panel ---- */}
           {compareMode && selected.length === 2 && compareA && compareB && (
-            <div className="console mt">
-              <div className="console-title">
-                <span className="traffic"><span className="t g" /><span className="t a" /><span className="t r" /></span>
-                <span>compare_session.exe — side by side</span>
-              </div>
-              <div className="console-body">
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 40px 1fr", marginBottom: 16, fontSize: 13 }}>
-                  <div className="center" style={{ color: "var(--cyan)", wordBreak: "break-all" }}>{compareA.url}</div>
-                  <div className="center dim">vs</div>
-                  <div className="center" style={{ color: "var(--cyan)", wordBreak: "break-all" }}>{compareB.url}</div>
-                </div>
-
-                {renderCompareRow("Score", compareA.score, compareB.score, scoreColor)}
-                {renderCompareRow("Date", formatDate(compareA.date), formatDate(compareB.date))}
-
-                <div style={{ margin: "10px 0", borderTop: "1px dashed var(--line)" }} />
-
-                {SEV_ORDER.map((sev) =>
-                  renderCompareRow(
-                    sev.toUpperCase(),
-                    countSeverity(compareA.findings, sev),
-                    countSeverity(compareB.findings, sev),
-                    () => severityColor(sev)
-                  )
-                )}
-
-                <div style={{ margin: "10px 0", borderTop: "1px dashed var(--line)" }} />
-
-                {renderCompareRow("Headers", compareA.headers?.length, compareB.headers?.length)}
-                {renderCompareRow("Endpoints", compareA.endpoints?.length, compareB.endpoints?.length)}
-                {renderCompareRow("TLS Issues", compareA.tlsIssues?.length, compareB.tlsIssues?.length)}
-                {renderCompareRow("Host", compareA.host, compareB.host)}
-              </div>
-            </div>
+            <ScanDiff scan1={compareA} scan2={compareB} />
           )}
 
           {/* ---- Scan List ---- */}

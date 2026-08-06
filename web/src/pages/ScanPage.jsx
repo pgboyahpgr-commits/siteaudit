@@ -9,9 +9,13 @@ import AdvisorChat from "../components/AdvisorChat.jsx";
 import HostInfoPanel from "../components/HostInfoPanel.jsx";
 import VideoGuides from "../components/VideoGuides.jsx";
 import FindingFixTools from "../components/FindingFixTools.jsx";
+import FixCodeGen from "../components/FixCodeGen.jsx";
+import SiteStory from "../components/SiteStory.jsx";
+import SiteGraph from "../components/SiteGraph.jsx";
 import VisionPanel from "../components/VisionPanel.jsx";
 import VibeDeepDive from "../components/VibeDeepDive.jsx";
 import { downloadJSON, downloadCSV, downloadHTML, downloadMarkdown, downloadPDF } from "../report.js";
+import ExposeOverlay from "../components/ExposeOverlay.jsx";
 import { SEV_ORDER } from "../theme.js";
 import { setAgentContext } from "../agentContext.js";
 import { saveScanToHistory } from "../scanHistory.js";
@@ -25,7 +29,7 @@ const PHASE_LINE = {
   endpoints: ["[phase:endpoints]", "[reverse]", "Reverse-engineering & probing every endpoint..."],
   source: ["[phase:source]", "[regex]", "Scanning source for secrets, leaks & CSRF..."],
   cve: ["[phase:cve]", "[match]", "Matching detected versions against known CVEs..."],
-  done: ["[complete]", "[ok]", "Scan complete. Report generated."],
+  done: ["[complete]", "[ok]", "█████ SCAN COMPLETE █████ MATRIX PROTOCOL ENGAGED █████"],
 };
 
 export default function ScanPage() {
@@ -318,7 +322,7 @@ export default function ScanPage() {
       )}
 
       {running && (
-        <div className="console mt">
+        <div className="console hacker-terminal mt">
           <div className="console-title">
             <span className="traffic">
               <span className="t g" />
@@ -329,10 +333,16 @@ export default function ScanPage() {
           </div>
           <div className="console-body">
             <div className="term" ref={termRef}>
+              <div className="term-scanline" />
               {terminalLines.map((line, i) => {
                 const [text, kind] = Array.isArray(line) ? line : [line, "info"];
+                const delay = Math.min(i * 80, 800);
                 return (
-                  <div key={i} className={`l t-${kind || "info"}`}>
+                  <div
+                    key={i}
+                    className={`line ${kind}`}
+                    style={{ animationDelay: `${delay}ms` }}
+                  >
                     {text}
                   </div>
                 );
@@ -514,6 +524,8 @@ export default function ScanPage() {
                 ))}
               </div>
 
+              <ExposeOverlay scanId={scan.scanId} findings={findings} targetUrl={scan.targetUrl} />
+
               <div className="btn-row mt">
                 <button className="btn btn-ghost btn-sm" onClick={() => downloadJSON(scan)}>
                   ⭳ JSON
@@ -551,12 +563,16 @@ export default function ScanPage() {
             </div>
           </div>
 
+          <SiteStory scan={scan} />
+
           {scan.meta?.endpoints?.length > 0 && (
             <div className="section-head">
               <h2>ENDPOINT MAP ({scan.meta.endpoints.length})</h2>
             </div>
           )}
           {scan.meta?.endpoints?.length > 0 && <EndpointTable endpoints={scan.meta.endpoints} />}
+
+          <SiteGraph scan={scan} />
 
           <VisionPanel scanId={scan.scanId} />
           <VideoGuides scanId={scan.scanId} />
@@ -634,6 +650,7 @@ export default function ScanPage() {
                       </div>
                     )}
                     <FindingFixTools scanId={scan.scanId} finding={f} />
+                    <FixCodeGen finding={f} />
                     {f.references?.length > 0 && (
                       <div className="block refs">
                         <div className="label">References</div>
