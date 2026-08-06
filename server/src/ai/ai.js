@@ -6,7 +6,7 @@ import { lookupCves } from "../scan/cve.js";
 const PROVIDERS = {
   gemini: {
     key: () => process.env.GEMINI_API_KEY,
-    model: () => process.env.GEMINI_MODEL || "gemini-2.5-flash",
+    model: () => process.env.GEMINI_MODEL || "gemini-1.5-flash",
     call: async (system, user) => {
       const res = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${PROVIDERS.gemini.model()}:generateContent?key=${PROVIDERS.gemini.key()}`,
@@ -363,17 +363,22 @@ function summarizeCounts(scan) {
 }
 
 export async function ensureAiAnalysis(scanId) {
+  const scan = getScan(scanId);
+  if (!scan) return null;
+  if (scan.ai?.summary && scan.ai?.vibe?.assessment) return scan.ai;
   try {
-    const scan = getScan(scanId);
-    if (!scan || scan.status !== "completed") return null;
-    if (scan.ai?.summary && scan.ai?.vibe?.assessment) return scan.ai;
     const [analysis, vibe] = await Promise.all([analyzeFindings(scan), analyzeVibe(scan)]);
     const ai = { ...analysis, vibe, generatedAt: new Date().toISOString() };
     updateScan(scanId, { ai });
     return ai;
   } catch (err) {
-    console.error(`[ai] analysis failed for ${scanId}:`, err.message);
-    return null;
+    console.error(`[ai] analysis error for ${scanId}, producing guaranteed local report:`, err.message);
+    const local = localAnalysis(scan);
+    const vibeData = detectVibeCode(scan.meta || {});
+    const vibe = { ...vibeData, ...localVibe(scan, vibeData), provider: "local" };
+    const ai = { ...local, vibe, generatedAt: new Date().toISOString() };
+    updateScan(scanId, { ai });
+    return ai;
   }
 }
 

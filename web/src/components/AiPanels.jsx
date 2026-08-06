@@ -23,19 +23,28 @@ export default function AiPanels({ scanId }) {
 
   useEffect(() => {
     let stop = false;
-    (async () => {
+    let timer = null;
+
+    const fetchAi = async () => {
       try {
         const r = await api.getAi(scanId);
-        if (!stop) {
+        if (!stop && r.ai) {
           setAi(r.ai);
           setState("ready");
+          return;
         }
       } catch (err) {
-        if (!stop) setState("error");
+        // if scan is still processing, retry after 3s
       }
-    })();
+      if (!stop) {
+        timer = setTimeout(fetchAi, 3000);
+      }
+    };
+
+    fetchAi();
     return () => {
       stop = true;
+      if (timer) clearTimeout(timer);
     };
   }, [scanId]);
 
