@@ -68,15 +68,29 @@ function heuristicUI(scan) {
 }
 
 function parseVision(text) {
+  if (!text) return null;
   try {
     return JSON.parse(text);
   } catch {
-    const m = text.match(/\{[\s\S]*\}/);
-    if (m) {
-      try {
-        return JSON.parse(m[0]);
-      } catch {
-        /* fall through */
+    const maxLen = 50000;
+    const s = text.length > maxLen ? text.slice(0, maxLen) : text;
+    const start = s.indexOf("{");
+    if (start === -1) return null;
+    let braceCount = 0;
+    let inString = false;
+    let esc = false;
+    for (let i = start; i < s.length; i++) {
+      const ch = s[i];
+      if (esc) { esc = false; continue; }
+      if (ch === "\\" && inString) { esc = true; continue; }
+      if (ch === '"' && !esc) { inString = !inString; continue; }
+      if (inString) continue;
+      if (ch === "{") braceCount++;
+      else if (ch === "}") {
+        braceCount--;
+        if (braceCount === 0) {
+          try { return JSON.parse(s.slice(start, i + 1)); } catch { return null; }
+        }
       }
     }
   }

@@ -211,17 +211,33 @@ async function callLLM(system, user) {
   throw new Error(errors.join(" | ") || "no AI provider configured");
 }
 
+function safeExtractJson(text) {
+  if (!text || typeof text !== "string") return null;
+  const maxLen = 50000;
+  const s = text.length > maxLen ? text.slice(0, maxLen) : text;
+  const start = s.indexOf("{");
+  if (start === -1) return null;
+  let braceCount = 0;
+  let inString = false;
+  let escape = false;
+  for (let i = start; i < s.length; i++) {
+    const ch = s[i];
+    if (escape) { escape = false; continue; }
+    if (ch === "\\" && inString) { escape = true; continue; }
+    if (ch === '"' && !escape) { inString = !inString; continue; }
+    if (inString) continue;
+    if (ch === "{") braceCount++;
+    else if (ch === "}") { braceCount--; if (braceCount === 0) { try { return JSON.parse(s.slice(start, i + 1)); } catch { return null; } } }
+  }
+  return null;
+}
+
 export async function parseJsonLoose(text) {
+  if (!text) return null;
   try {
     return JSON.parse(text);
   } catch {
-    const m = text.match(/\{[\s\S]*\}/);
-    if (!m) return null;
-    try {
-      return JSON.parse(m[0]);
-    } catch {
-      return null;
-    }
+    return safeExtractJson(text);
   }
 }
 

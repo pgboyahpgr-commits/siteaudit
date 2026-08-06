@@ -771,7 +771,9 @@ async function checkHeuristics(dataUrl) {
 // 5. Deep Learning ONNX Model Classifier
 async function checkML(dataUrl) {
   try {
-    const classifier = await pipeline("image-classification", "onnx-community/ai-source-detector-ONNX");
+    const classifier = await pipeline("image-classification", "onnx-community/ai-source-detector-ONNX", {
+      progress_callback: null,
+    });
     const out = await classifier(dataUrl);
 
     if (!out || out.length === 0) {
@@ -806,7 +808,7 @@ async function checkML(dataUrl) {
       error: true,
       isAI: false,
       score: 50,
-      summary: "ML model inference unavailable or still downloading weights: " + err.message
+      summary: "ML model unavailable (ONNX runtime limits or still downloading): " + (err.message || "unknown").slice(0, 100)
     };
   }
 }

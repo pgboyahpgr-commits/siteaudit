@@ -24,6 +24,8 @@ export default function AiPanels({ scanId }) {
   useEffect(() => {
     let stop = false;
     let timer = null;
+    let attempts = 0;
+    const MAX_ATTEMPTS = 20;
 
     const fetchAi = async () => {
       try {
@@ -36,8 +38,11 @@ export default function AiPanels({ scanId }) {
       } catch (err) {
         // if scan is still processing, retry after 3s
       }
-      if (!stop) {
+      attempts++;
+      if (!stop && attempts < MAX_ATTEMPTS) {
         timer = setTimeout(fetchAi, 3000);
+      } else if (!stop) {
+        setState("error");
       }
     };
 
