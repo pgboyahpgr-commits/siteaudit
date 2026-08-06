@@ -122,6 +122,20 @@ const PROVIDERS = {
         user,
       }),
   },
+  lmstudio: {
+    // Local models run 100% free & offline via LM Studio (localhost:1234).
+    // Only joins the chain when LMSTUDIO_ENABLED=1 (it won't work from a cloud host).
+    key: () => (process.env.LMSTUDIO_ENABLED === "1" ? "lmstudio-local" : undefined),
+    model: () => process.env.LMSTUDIO_MODEL || "local-model",
+    call: async (system, user) =>
+      openAICompat({
+        url: (process.env.LMSTUDIO_BASE_URL || "http://localhost:1234/v1").replace(/\/$/, "") + "/chat/completions",
+        key: "lm-studio",
+        model: process.env.LMSTUDIO_MODEL || "",
+        system,
+        user,
+      }),
+  },
 };
 
 // Any provider that speaks OpenAI's chat-completions format can share this caller.
@@ -147,7 +161,7 @@ async function openAICompat({ url, key, model, system, user }) {
 }
 
 export function aiProviders() {
-  const order = (process.env.AI_PROVIDER || "gemini,xai,completions,mistral,nim,openai,anthropic")
+  const order = (process.env.AI_PROVIDER || "gemini,xai,completions,mistral,nim,openai,anthropic,lmstudio")
     .split(",")
     .map((s) => s.trim().toLowerCase())
     .filter((p) => PROVIDERS[p] && PROVIDERS[p].key());

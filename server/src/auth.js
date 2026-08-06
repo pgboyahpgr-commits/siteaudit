@@ -18,19 +18,19 @@ export function signToken(userId) {
   return jwt.sign({ sub: userId }, JWT_SECRET, { expiresIn: JWT_EXPIRES });
 }
 
-export function registerUser(email, password) {
-  if (findUserByEmail(email)) {
+export async function registerUser(email, password) {
+  if (await findUserByEmail(email)) {
     const err = new Error("An account with this email already exists.");
     err.statusCode = 409;
     throw err;
   }
   const user = { id: newId("us"), email, passwordHash: hashPassword(password) };
-  createUser(user);
+  await createUser(user);
   return { user: { id: user.id, email }, token: signToken(user.id) };
 }
 
-export function loginUser(email, password) {
-  const user = findUserByEmail(email);
+export async function loginUser(email, password) {
+  const user = await findUserByEmail(email);
   if (!user || !verifyPassword(password, user.password_hash)) {
     const err = new Error("Invalid email or password.");
     err.statusCode = 401;
@@ -39,7 +39,7 @@ export function loginUser(email, password) {
   return { user: { id: user.id, email: user.email }, token: signToken(user.id) };
 }
 
-export function requireAuth(req, res, next) {
+export async function requireAuth(req, res, next) {
   const header = req.headers.authorization || "";
   const token = header.startsWith("Bearer ") ? header.slice(7) : null;
   if (!token) {
@@ -48,7 +48,7 @@ export function requireAuth(req, res, next) {
   try {
     const payload = jwt.verify(token, JWT_SECRET);
     req.userId = payload.sub;
-    req.user = findUserById(payload.sub);
+    req.user = await findUserById(payload.sub);
     if (!req.user) {
       return res.status(401).json({ error: { code: "UNAUTHORIZED", message: "Account not found." } });
     }

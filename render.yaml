@@ -1,0 +1,36 @@
+# Render.com blueprint — deploy the SiteAudit API on the free tier.
+# Blueprint Dashboard: https://dashboard.render.com/blueprints
+# Push this repo and point Render at it, or paste this file when creating a new service.
+
+services:
+  - type: web
+    name: siteaudit-api
+    runtime: node
+    plan: free
+    rootDir: server
+    buildCommand: npm ci --omit=dev
+    startCommand: node --env-file-if-exists=.env src/index.js
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: 22
+      - key: PORT
+        value: 10000
+      - key: JWT_SECRET
+        generateValue: true
+      - key: CORS_ORIGIN
+        value: https://siteaudit-frontend.vercel.app
+      - key: AI_PROVIDER
+        value: gemini,xai,completions,mistral,nim,openai,anthropic,lmstudio
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
+      - key: XAI_API_KEY
+        sync: false
+      - key: YT_SEARCH_API
+        value: https://ytapis.djalokyt27.workers.dev
+      - key: SCREENSHOT_API
+        value: https://image.thum.io/get/width
+      - key: DATABASE_URL
+        sync: false

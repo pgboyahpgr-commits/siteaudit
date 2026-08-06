@@ -9,6 +9,7 @@ import AdvisorChat from "../components/AdvisorChat.jsx";
 import HostInfoPanel from "../components/HostInfoPanel.jsx";
 import VideoGuides from "../components/VideoGuides.jsx";
 import FindingFixTools from "../components/FindingFixTools.jsx";
+import VisionPanel from "../components/VisionPanel.jsx";
 import { downloadJSON, downloadCSV, downloadHTML } from "../report.js";
 import { SEV_ORDER } from "../theme.js";
 import { setAgentContext } from "../agentContext.js";
@@ -347,6 +348,7 @@ export default function ScanPage() {
           {scan.meta?.endpoints?.length > 0 && <EndpointTable endpoints={scan.meta.endpoints} />}
 
           <HostInfoPanel scanId={scan.scanId} />
+          <VisionPanel scanId={scan.scanId} />
           <VideoGuides scanId={scan.scanId} />
 
           {/* ---- AI ANALYSIS ---- */}

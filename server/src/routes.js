@@ -16,7 +16,7 @@ import { enqueue } from "./queue.js";
 import { validateToken, emailConfigured } from "./scan/verify.js";
 import { normalizeUrl } from "./scan/http.js";
 import { registerUser, loginUser, requireAuth } from "./auth.js";
-import { listUserScans, saveChatMessage, listChatMessages } from "./db.js";
+import { listUserScans, saveChatMessage, listChatMessages, dbKind } from "./db.js";
 import { newId } from "./store.js";
 
 const scanSchema = z.object({
@@ -164,7 +164,7 @@ export function registerRoutes(app) {
     const parsed = registerSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: { code: "VALIDATION", message: parsed.error.issues[0].message } });
     try {
-      res.status(201).json(registerUser(parsed.data.email.toLowerCase(), parsed.data.password));
+      res.status(201).json(await registerUser(parsed.data.email.toLowerCase(), parsed.data.password));
     } catch (err) {
       res.status(err.statusCode || 500).json({ error: { code: "AUTH", message: err.message } });
     }
@@ -174,18 +174,18 @@ export function registerRoutes(app) {
     const parsed = loginSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: { code: "VALIDATION", message: parsed.error.issues[0].message } });
     try {
-      res.json(loginUser(parsed.data.email.toLowerCase(), parsed.data.password));
+      res.json(await loginUser(parsed.data.email.toLowerCase(), parsed.data.password));
     } catch (err) {
       res.status(err.statusCode || 500).json({ error: { code: "AUTH", message: err.message } });
     }
   });
 
   router.get("/me", requireAuth, (req, res) => {
-    res.json({ user: req.user });
+    res.json({ user: req.user, db: dbKind() });
   });
 
-  router.get("/my/scans", requireAuth, (req, res) => {
-    res.json({ scans: listUserScans(req.userId) });
+  router.get("/my/scans", requireAuth, async (req, res) => {
+    res.json({ scans: await listUserScans(req.userId) });
   });
 
   // ---- Create scan ----
@@ -246,6 +246,23 @@ export function registerRoutes(app) {
     res.type("text/html").send(renderReport(scan, `${req.protocol}://${req.get("host")}`));
   });
 
+  // ---- UI/UX + visual trust audit (image analysis: desktop & mobile ratings) ----
+  router.get("/scan/:id/vision", async (req, res) => {
+    const scan = getScan(req.params.id);
+    if (!scan) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Scan not found." } });
+    if (scan.status !== "completed") return res.status(409).json({ error: { code: "NOT_READY", message: "Wait for the scan to finish." } });
+    if (req.query.refresh && scan.meta?.vision) updateScan(scan.id, { meta: { ...scan.meta, vision: null } });
+    if (scan.meta?.vision) return res.json(scan.meta.vision);
+    const { analyzeVision } = await import("./scan/vision.js");
+    try {
+      const vision = await analyzeVision(scan);
+      updateScan(scan.id, { meta: { ...scan.meta, vision } });
+      return res.json(vision);
+    } catch (err) {
+      return res.status(502).json({ error: { code: "VISION_ERROR", message: err.message } });
+    }
+  });
+
   // ---- YouTube fix guides for a scan's issues ----
   router.get("/scan/:id/videos", async (req, res) => {
     const scan = getScan(req.params.id);
@@ -295,12 +312,12 @@ export function registerRoutes(app) {
     if (!scan) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Scan not found." } });
     const parsed = chatSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: { code: "VALIDATION", message: parsed.error.issues[0].message } });
-    const history = listChatMessages(scan.id, 30).map((m) => ({ role: m.role, content: m.content }));
-    saveChatMessage({ id: newId("cm"), scanId: scan.id, role: "user", content: parsed.data.question });
+    const history = (await listChatMessages(scan.id, 30)).map((m) => ({ role: m.role, content: m.content }));
+    await saveChatMessage({ id: newId("cm"), scanId: scan.id, role: "user", content: parsed.data.question });
     const { chatReply } = await import("./ai/ai.js");
     try {
       const { reply, provider } = await chatReply(scan, history, parsed.data.question);
-      saveChatMessage({ id: newId("cm"), scanId: scan.id, role: "assistant", content: reply });
+      await saveChatMessage({ id: newId("cm"), scanId: scan.id, role: "assistant", content: reply });
       res.json({ reply, provider });
     } catch (err) {
       res.status(502).json({ error: { code: "AI_ERROR", message: err.message } });

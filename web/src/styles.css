@@ -2288,4 +2288,77 @@ select:focus {
   }
 }
 
+/* ---- UI rating (vision) ---- */
+.ui-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+@media (max-width: 520px) {
+  .ui-grid { grid-template-columns: 1fr; }
+}
+.ui-rating {
+  border: 1px solid #1c2b4f;
+  background: #0a1128;
+  padding: 12px 14px;
+  border-radius: 6px;
+}
+.ui-rating-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.ui-rating-label {
+  font-size: 12px;
+  letter-spacing: 1px;
+  color: #e6eefc;
+}
+.ui-rating-verdict {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+.ui-meter {
+  height: 12px;
+  border: 1px solid #1c2b4f;
+  border-radius: 6px;
+  background: #070d1f;
+  position: relative;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+.ui-meter-bar {
+  height: 100%;
+  transition: width 0.5s;
+}
+.ui-meter-score {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 10px;
+  font-weight: 800;
+  color: #e6eefc;
+  text-shadow: 0 0 4px #000;
+}
+.ui-strengths,
+.ui-impr {
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: #c6d2e4;
+  margin-top: 4px;
+}
+.ui-meta {
+  margin: 10px 0 4px;
+}
+.ui-meta .chip.ok {
+  border-color: var(--green);
+  color: var(--green);
+}
+.ui-vibes .label {
+  margin: 10px 0 6px;
+}
+
 

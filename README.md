@@ -38,9 +38,9 @@ their own site, in their own account, with their own data.
   version-gated CVEs — every finding with evidence, a plain-English explanation, and a
   step-by-step fix.
 - **AI Security Analyst** (Google Gemini → xAI Grok → Completions AI → Mistral →
-  NVIDIA NIM → OpenAI → Anthropic → **built-in local fallback**) writes the
-  plain-language risk report, the prioritized fix plan, and the VibeCheck narrative.
-  Works even with zero API keys.
+  NVIDIA NIM → OpenAI → Anthropic → **LM Studio (local)** → **built-in local
+  fallback**) writes the plain-language risk report, the prioritized fix plan, and the
+  VibeCheck narrative. Works even with zero API keys.
 - **AI Security Advisor chat** answers questions about *your* scan, grounded only in your
   data.
 - **VibeCheck** quantifies how "vibe-coded" a site looks (boilerplate scaffolds,
@@ -49,8 +49,7 @@ their own site, in their own account, with their own data.
 - **Ownership verification** (token file / meta tag / header / DNS TXT / DNS CNAME /
   email magic link) — the same model Google Search Console uses — gates the deeper
   Full Check.
-- **Accounts & history** with JWT auth, bcrypt hashing, and SQLite storage, so your
-  reports are yours and re-runnable. Score history charted over time.
+- **Accounts & history** with JWT auth, bcrypt hashing, and SQLite storage (or **Supabase/Postgres** in production), so your reports are yours and re-runnable. Score history charted over time.
 
 ---
 
@@ -66,7 +65,10 @@ their own site, in their own account, with their own data.
 | TLS | Handshake, expiry, self-signed, legacy protocols |
 | CVEs | Version-gated mini-CVE DB (jQuery, Angular, Bootstrap, WordPress, Lodash, PHP) |
 | AI Risk Report | Plain-language summary, severity assessment, top priorities |
+| AI Risk Report | Plain-language summary, severity assessment, top priorities |
 | AI Fix Plan | Prioritized remediation steps (action + why), plus per-finding fixes |
+| UI/UX rating | Computer-vision "eyeglass" check on desktop + mobile screenshots — 0–100 damage scores, responsive verdict, strengths & improvement lists |
+| VibeCheck | 0–100 "how vibe-coded" score, detected signals, AI recommendations |
 | VibeCheck | 0–100 "how vibe-coded" score, detected signals, AI recommendations |
 | Advisor Chat | Ask anything about your scan — grounded answers |
 | Video Fix Guides | Auto-searches YouTube (via a configurable `YT_SEARCH_API` proxy) for tutorial videos matching your top issues; every finding has a "▶ Watch tutorial" button |
@@ -90,8 +92,8 @@ their own site, in their own account, with their own data.
 | Auth | **JSON Web Token (JWT)** (`jsonwebtoken`) |
 | Password hashing | **bcrypt** (`bcryptjs`) |
 | Validation | **Zod** (schemas on scan/auth/challenge/chat inputs) |
-| Database | **SQLite** via `node:sqlite` (`server/src/db.js`) |
-| AI | **Google Gemini** (default) → **xAI Grok** → **Completions AI** → **Mistral** → **NVIDIA NIM** → OpenAI → Anthropic, keyed in backend env only, with a deterministic local fallback when no key is set or the API is down |
+| Database | **SQLite** via `node:sqlite` (dev); pluggable **Supabase/Postgres** via `DATABASE_URL` (`db.js` facade → `db-sqlite.js` / `db-supabase.js`) |
+| AI | **Google Gemini** (default) → **xAI Grok** → **Completions AI** → **Mistral** → **NVIDIA NIM** → OpenAI → Anthropic → **LM Studio (local)** → deterministic local fallback, keyed in backend env only |
 | Deploy | Vercel/Netlify (frontend), Render/Railway (backend) |
 
 See [docs/SUBMISSION.md](docs/SUBMISSION.md) for the full mapping and deliverables.
@@ -113,13 +115,15 @@ siteaudit/
 ├── server/                 # Node + Express API & scan engine
 │   ├── src/
 │   │   ├── index.js        # Express bootstrap (CORS, JSON, errors)
-│   │   ├── routes.js       # /scan /verify /auth /ai /chat /report + Zod + rate limits
+│   │   ├── routes.js       # /scan /verify /auth /ai /agent /vision /videos /chat /report + Zod + rate limits
 │   │   ├── auth.js         # JWT + bcrypt (register/login/requireAuth)
-│   │   ├── db.js           # SQLite (users, scans, chat_messages)
+│   │   ├── db.js           # DB facade (SQLite ↔ Supabase); db-sqlite.js + db-supabase.js
 │   │   ├── queue.js        # in-process scan queue (fires AI after completion)
 │   │   ├── store.js        # JSON persistence for scans/reports/verifications
-│   │   ├── scan/           # engine, crawl, fingerprint, checks, tls, verify, fixes, cve
+│   │   ├── scan/           # engine, crawl, fingerprint, checks, tls, verify, vision, fixes, cve
 │   │   └── ai/             # ai.js (multi-provider + local fallback), vibe.js
+│   ├── supabase.sql        # Postgres schema (run in Supabase SQL editor)
+│   ├── railway.json        # Railway deploy config
 │   └── .env.example        # copy to .env — AI keys live ONLY here
 ├── scripts/                # test-target.mjs (deliberately-vulnerable demo site)
 ├── docs/                   # full documentation set
@@ -159,6 +163,25 @@ score (the demo triggers "Full AI prototype"), the fix plan, and the advisor cha
 3. Restart the server. The AI analyst, Reversiy agent, and vibe narrative now use real
    LLMs; if a provider fails or is rate-limited, SiteAudit automatically tries the next
    provider in the chain, then falls back to local rules.
+
+#### Use LM Studio for private/local AI (optional)
+Run models 100% locally — free, offline-capable, no data leaves your machine.
+1. Install [LM Studio](https://lmstudio.ai), load any chat model, and start its local
+   server (**Developer → Start Server**; default `http://localhost:1234/v1`).
+2. Set `LMSTUDIO_ENABLED=1` (plus `LMSTUDIO_BASE_URL`/`LMSTUDIO_MODEL` if not defaults).
+3. Restart. LM Studio is last in the provider chain, so cloud providers are preferred
+   when keys exist; if you only want local, empty `AI_PROVIDER` to just `lmstudio`.
+
+#### Use Supabase for the database (optional — SQLite is default)
+1. Create a free project at [supabase.com](https://supabase.com).
+2. Open **SQL Editor**, run the schema from `server/supabase.sql`.
+3. Copy the **Connection string** (Project Settings → Database → "Direct connection"
+   for Node, or the transaction-pooler string) into `DATABASE_URL` in `server/.env`.
+4. Restart. The server auto-detects `DATABASE_URL` and switches from SQLite to
+   Postgres; the `/api/me` endpoint reports `db: "supabase"` vs `"sqlite"`.
+
+> Schema only creates tables on first startup if missing — but running
+> `server/supabase.sql` once in the Supabase SQL editor is the reliable path.
 
 ---
 

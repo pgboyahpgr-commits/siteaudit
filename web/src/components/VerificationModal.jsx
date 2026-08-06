@@ -111,6 +111,42 @@ export default function VerificationModal({ scan, onClose, onVerified }) {
     URL.revokeObjectURL(a.href);
   }
 
+  function downloadSetupTxt() {
+    if (!challenge) return;
+    const host = new URL((scan?.targetUrl) || window.location.href).hostname;
+    const lines = [
+      "SITEAUDIT OWNERSHIP VERIFICATION — SETUP",
+      "-----------------------------------------",
+      "",
+      `Site: ${scan?.targetUrl || ""}`,
+      `Method: ${challenge.method.toUpperCase()}`,
+      `Token: ${challenge.token}`,
+      "",
+      "HOW TO COMPLETE THIS VERIFICATION:",
+      ...((challenge.instructions?.steps || []).map((s) => `  ${s}`)),
+      "",
+      challenge.instructions?.url ? `Token file must be readable at: ${challenge.instructions.url}` : "",
+      challenge.instructions?.tag ? `Meta tag to add:\n  ${challenge.instructions.tag}` : "",
+      challenge.instructions?.headerName ? `Header name: ${challenge.instructions.headerName}` : "",
+      challenge.instructions?.record ? `DNS record:\n  ${challenge.instructions.record}` : "",
+      "",
+      "TIP for Vercel (no custom domain):",
+      "  Put the file into your project's public/ folder and redeploy.",
+      "  Then click VERIFY in SiteAudit — we auto-check every 8 seconds.",
+      "",
+      `Token expires ${new Date(challenge.expiresAt).toLocaleString()}.`,
+      "",
+      "You own this site? This token proves it to SiteAudit so the Full Check unlocks.",
+    ];
+    const text = lines.filter((l) => l !== "").join("\n");
+    const blob = new Blob([text], { type: "text/plain" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `siteaudit-verify-setup-${host}.txt`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
   function openVerifyUrl() {
     if (!challenge?.instructions?.url) return;
     window.open(challenge.instructions.url, "_blank", "noopener");
@@ -207,7 +243,10 @@ export default function VerificationModal({ scan, onClose, onVerified }) {
               {isFile && (
                 <div className="file-actions">
                   <button className="btn btn-ghost btn-sm" onClick={downloadTokenFile}>
-                    ⭳ DOWNLOAD TOKEN FILE
+                    ⭳ TOKEN FILE
+                  </button>
+                  <button className="btn btn-ghost btn-sm" onClick={downloadSetupTxt}>
+                    ⭳ SETUP TXT
                   </button>
                   <button className="btn btn-ghost btn-sm" onClick={openVerifyUrl}>
                     OPEN VERIFY URL ↗
