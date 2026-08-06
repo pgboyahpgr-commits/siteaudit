@@ -56,6 +56,9 @@ export default function SettingsPage() {
   const [toast, setToast] = useState(null);
   const [availableModels, setAvailableModels] = useState([]);
   const [showSetup, setShowSetup] = useState(false);
+  const [lmChatMessages, setLmChatMessages] = useState([]);
+  const [lmChatInput, setLmChatInput] = useState("");
+  const [lmChatBusy, setLmChatBusy] = useState(false);
   const saveTimer = useRef(null);
 
   const clearToast = useCallback(() => {
@@ -158,10 +161,22 @@ export default function SettingsPage() {
   async function saveToBackend() {
     setSaving(true);
     try {
+      // Flatten settings to match backend ENV var names
+      const flat = {};
+      if (settings.apiKeys.gemini) flat.GEMINI_API_KEY = settings.apiKeys.gemini;
+      if (settings.apiKeys.xai) flat.XAI_API_KEY = settings.apiKeys.xai;
+      if (settings.apiKeys.openai) flat.OPENAI_API_KEY = settings.apiKeys.openai;
+      if (settings.apiKeys.anthropic) flat.ANTHROPIC_API_KEY = settings.apiKeys.anthropic;
+      if (settings.apiKeys.completions) flat.COMPLETIONS_API_KEY = settings.apiKeys.completions;
+      if (settings.apiKeys.mistral) flat.MISTRAL_API_KEY = settings.apiKeys.mistral;
+      if (settings.apiKeys.nvidiaNim) flat.NVIDIA_NIM_API_KEY = settings.apiKeys.nvidiaNim;
+      if (settings.lmStudio.enabled) flat.LMSTUDIO_ENABLED = "1";
+      if (settings.lmStudio.baseUrl) flat.LMSTUDIO_BASE_URL = settings.lmStudio.baseUrl;
+      if (settings.lmStudio.model) flat.LMSTUDIO_MODEL = settings.lmStudio.model;
       const res = await fetch("/api/settings", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(settings),
+        body: JSON.stringify(flat),
       });
       if (res.ok) {
         showToast("ok", "Settings saved and applied to backend.");
@@ -180,6 +195,32 @@ export default function SettingsPage() {
     if (!val) return "";
     if (val.length <= 8) return "*".repeat(val.length);
     return val.slice(0, 4) + "*".repeat(Math.min(val.length - 8, 16)) + val.slice(-4);
+  }
+
+  async function sendLmChatMessage() {
+    const msg = lmChatInput.trim();
+    if (!msg || lmChatBusy) return;
+    setLmChatInput("");
+    setLmChatMessages(p => [...p, { role: "user", content: msg }]);
+    setLmChatBusy(true);
+    try {
+      const headers = { "content-type": "application/json" };
+      const savedSettings = localStorage.getItem("sa_settings");
+      if (savedSettings) {
+        try { headers["x-sa-settings"] = btoa(savedSettings); } catch {}
+      }
+      const res = await fetch("/api/agent", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ message: msg, history: lmChatMessages.slice(-4) }),
+      });
+      const data = await res.json();
+      setLmChatMessages(p => [...p, { role: "assistant", content: data.reply, provider: data.provider || "unknown" }]);
+    } catch (err) {
+      setLmChatMessages(p => [...p, { role: "assistant", content: "Connection failed: " + err.message, provider: "error" }]);
+    } finally {
+      setLmChatBusy(false);
+    }
   }
 
   return (
@@ -467,6 +508,61 @@ export default function SettingsPage() {
           </button>
         </div>
       </div>
+
+      {/* ---- LM STUDIO TEST CHAT ---- */}
+      {lmStatus?.reachable && (
+        <div className="console mt">
+          <div className="console-title">
+            <span className="traffic"><span className="t g" /><span className="t a" /><span className="t r" /></span>
+            <span>LM STUDIO — TEST CHAT</span>
+            <span className="small dim" style={{ marginLeft: 8 }}>verify your local AI works before using in Reversiy</span>
+          </div>
+          <div className="console-body">
+            {lmChatMessages.length === 0 && (
+              <div className="small dim" style={{ marginBottom: 12 }}>Send a message to test your local LM Studio model. Press SAVE & APPLY TO BACKEND first.</div>
+            )}
+            <div style={{ maxHeight: 220, overflowY: "auto", marginBottom: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+              {lmChatMessages.map((m, i) => (
+                <div key={i} style={{
+                  padding: "8px 12px", borderRadius: 8, fontSize: 13, lineHeight: 1.5,
+                  background: m.role === "user" ? "var(--panel-2)" : "rgba(0,212,255,0.08)",
+                  border: m.role === "user" ? "1px solid var(--line)" : "1px solid rgba(0,212,255,0.3)",
+                  alignSelf: m.role === "user" ? "flex-end" : "flex-start",
+                  maxWidth: "85%",
+                }}>
+                  <div style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{m.content}</div>
+                  {m.provider && (
+                    <div style={{ fontSize: 10, color: "var(--dim)", marginTop: 4 }}>
+                      via {m.provider}
+                    </div>
+                  )}
+                </div>
+              ))}
+              {lmChatBusy && (
+                <div style={{ padding: "8px 12px", fontSize: 13, color: "var(--dim)", alignSelf: "flex-start" }}>
+                  <span className="spinner" /> thinking...
+                </div>
+              )}
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <input
+                className="url-input"
+                style={{ flex: 1 }}
+                type="text"
+                value={lmChatInput}
+                onChange={e => setLmChatInput(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && sendLmChatMessage()}
+                placeholder="Type a test message..."
+                disabled={lmChatBusy}
+                spellCheck={false}
+              />
+              <button className="btn btn-primary btn-sm" onClick={sendLmChatMessage} disabled={lmChatBusy || !lmChatInput.trim()}>
+                {lmChatBusy ? "..." : "SEND"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ---- TOAST ---- */}
       {toast && (
