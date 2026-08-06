@@ -16,7 +16,7 @@ import { enqueue } from "./queue.js";
 import { validateToken, emailConfigured } from "./scan/verify.js";
 import { normalizeUrl } from "./scan/http.js";
 import { registerUser, loginUser, requireAuth } from "./auth.js";
-import { listUserScans, saveChatMessage, listChatMessages, dbKind } from "./db.js";
+import { listUserScans, saveChatMessage, listChatMessages, dbKind, upsertScan } from "./db.js";
 import { newId } from "./store.js";
 
 const scanSchema = z.object({
@@ -302,7 +302,8 @@ export function registerRoutes(app) {
   router.post("/scan/:id/save", requireAuth, async (req, res) => {
     const scan = getScan(req.params.id);
     if (!scan) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Scan not found." } });
-    updateScan(scan.id, { userId: req.userId });
+    const next = updateScan(scan.id, { userId: req.userId });
+    await upsertScan(next);
     return res.json({ saved: true, scanId: scan.id });
   });
 
