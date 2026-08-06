@@ -12,7 +12,22 @@ async function request(path, options = {}) {
   const savedSettings = localStorage.getItem("sa_settings");
   if (savedSettings) {
     try {
-      headers["x-sa-settings"] = btoa(savedSettings);
+      const parsed = JSON.parse(savedSettings);
+      // Flatten nested format to match server ENV var names
+      const flat = {};
+      const keys = parsed.apiKeys || {};
+      if (keys.gemini) flat.GEMINI_API_KEY = keys.gemini;
+      if (keys.xai) flat.XAI_API_KEY = keys.xai;
+      if (keys.openai) flat.OPENAI_API_KEY = keys.openai;
+      if (keys.anthropic) flat.ANTHROPIC_API_KEY = keys.anthropic;
+      if (keys.completions) flat.COMPLETIONS_API_KEY = keys.completions;
+      if (keys.mistral) flat.MISTRAL_API_KEY = keys.mistral;
+      if (keys.nvidiaNim) flat.NVIDIA_NIM_API_KEY = keys.nvidiaNim;
+      const lm = parsed.lmStudio || {};
+      if (lm.enabled) flat.LMSTUDIO_ENABLED = "1";
+      if (lm.baseUrl) flat.LMSTUDIO_BASE_URL = lm.baseUrl;
+      if (lm.model) flat.LMSTUDIO_MODEL = lm.model;
+      headers["x-sa-settings"] = btoa(JSON.stringify(flat));
     } catch {}
   }
   const isGetOrHead = !options.method || options.method === "GET" || options.method === "HEAD";
