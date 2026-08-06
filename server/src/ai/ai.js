@@ -372,25 +372,117 @@ export async function chatReply(scan, history, question) {
 function localChatAnswer(scan, question) {
   const findings = scan.findings || [];
   const q = question.toLowerCase();
+
+  // Try to find relevant findings by keyword match
   const relevant = findings.filter((f) => {
     const hay = `${f.title} ${f.category} ${f.description || ""} ${f.url || ""}`.toLowerCase();
-    return q.split(/\s+/).some((w) => w.length > 3 && hay.includes(w));
+    const words = q.split(/\s+/).filter((w) => w.length > 3);
+    return words.some((w) => hay.includes(w));
   });
+
   if (relevant.length) {
     const f = relevant[0];
-    return `Found something relevant: ${f.severity} — ${f.title}${f.url ? ` at ${f.url}` : ""}.\n\n${f.description || ""}\n\nHow to fix: ${f.fix || "see the report"}.${f.cveId ? `\n\nRelated CVE: ${f.cveId}` : ""}`;
+    return [
+      `## ${f.severity.toUpperCase()}: ${f.title}`,
+      f.url ? `\n**URL:** ${f.url}` : "",
+      f.description ? `\n**What this means:** ${f.description}` : "",
+      f.fix ? `\n**How to fix:** ${f.fix}` : "",
+      f.cveId ? `\n**Related CVE:** ${f.cveId}` : "",
+      f.evidence ? `\n**Evidence:** ${f.evidence.slice(0, 200)}` : "",
+      relevant.length > 1 ? `\n\n*${relevant.length - 1} more related finding(s) found.*` : "",
+    ].join("");
   }
-  if (/score|risk|how bad/.test(q)) {
-    return `Overall security score: ${scan.score}/100. Breakdown: ${summarizeCounts(scan)}. ${
-      scan.score < 50 ? "This needs urgent attention — start with the critical/high findings." : scan.score < 80 ? "Decent, but the medium/low findings should still be fixed." : "Looks good — keep fixing the remaining low findings."
-    }`;
+
+  if (/score|risk|grade|how bad|rating/.test(q)) {
+    const criticalHigh = findings.filter((f) => ["critical", "high"].includes(f.severity)).length;
+    return [
+      `**Overall security score: ${scan.score}/100**`,
+      "",
+      `Breakdown: ${summarizeCounts(scan)}`,
+      "",
+      scan.score < 50
+        ? "This site needs urgent attention. Start with the critical and high findings — each one lists exact fix steps in the report below."
+        : scan.score < 80
+          ? "Decent score, but the medium and low findings still matter. Addressing these will significantly improve your security posture."
+          : "Strong score! The remaining low-severity items are good hygiene to clean up. Your site is in solid shape.",
+      "",
+      criticalHigh > 0 ? `**${criticalHigh} critical/high issue(s) need immediate action.** Scroll down to FINDINGS for details.` : "",
+    ].join("\n");
   }
-  if (/what should|priority|first|fix/.test(q)) {
+
+  if (/what should|priority|first|urgent|important/.test(q)) {
     const top = findings.filter((f) => ["critical", "high"].includes(f.severity));
-    const pick = top.length ? top : findings.filter((f) => f.severity === "medium");
-    return pick.slice(0, 3).map((f) => `- ${f.severity}: ${f.title} → ${f.fix || "fix in report"}`).join("\n") || "No actionable findings in this scan.";
+    if (top.length) {
+      const list = top.slice(0, 5).map((f, i) => `${i + 1}. **${f.severity}**: ${f.title} → ${(f.fix || "see report").slice(0, 120)}`).join("\n\n");
+      return `**Top ${Math.min(top.length, 5)} urgent fixes:**\n\n${list}`;
+    }
+    const medium = findings.filter((f) => f.severity === "medium");
+    if (medium.length) {
+      const list = medium.slice(0, 3).map((f, i) => `${i + 1}. ${f.title} → ${(f.fix || "see report").slice(0, 120)}`).join("\n\n");
+      return `No critical/high issues found — nice! Here are your top medium-priority items:\n\n${list}`;
+    }
+    return "No actionable findings in this scan. Your site looks clean!";
   }
-  return `I can answer questions about this scan of ${scan.targetUrl}. Summary: score ${scan.score}/100, ${summarizeCounts(scan)}. Ask me things like "what should I fix first?" or "explain the critical issues" or "is the score good?".`;
+
+  if (/cve|vulnerability|exploit/.test(q)) {
+    const cves = findings.filter((f) => f.cveId);
+    if (cves.length) {
+      return `**${cves.length} CVE(s) matched:**\n\n${cves.map((f) => `- **${f.cveId}**: ${f.title}`).join("\n")}`;
+    }
+    return "No CVEs matched for your detected technology versions. This is good — your stack appears up-to-date. However, our CVE database covers 22 entries; consider an external CVE scan for comprehensive coverage.";
+  }
+
+  if (/endpoint|api|route/.test(q) && scan.meta?.endpoints) {
+    const eps = scan.meta.endpoints || [];
+    const apiEps = eps.filter((e) => e.isApi);
+    return [
+      `**${eps.length} endpoints mapped** (${apiEps.length} API, ${eps.length - apiEps.length} pages)`,
+      "",
+      "Endpoints found:" + eps.slice(0, 10).map((e) => `\n- ${e.status} ${e.url} ${e.isApi ? "[API]" : ""}`).join(""),
+      eps.length > 10 ? `\n\n*...and ${eps.length - 10} more. Scroll up to ENDPOINT MAP for the full list.*` : "",
+    ].join("\n");
+  }
+
+  if (/header|csp|cors|hsts|xfo/.test(q)) {
+    const headerFindings = findings.filter((f) => f.category === "header");
+    if (headerFindings.length) {
+      return `**${headerFindings.length} header issue(s) found:**\n\n${headerFindings.map((f) => `- ${f.severity}: ${f.title} → ${(f.fix || "see report").slice(0, 100)}`).join("\n")}`;
+    }
+    return "No security header issues found. Your headers look well-configured!";
+  }
+
+  if (/tls|ssl|certificate|https/.test(q)) {
+    const tlsFindings = findings.filter((f) => f.category === "tls");
+    const tls = scan.meta?.hostInfo?.tls;
+    return [
+      tlsFindings.length ? `**${tlsFindings.length} TLS issue(s):**\n${tlsFindings.map((f) => `- ${f.title} → ${f.fix || "see report"}`).join("\n")}` : "No TLS issues found.",
+      tls ? `\n\nTLS: ${tls.protocol || "unknown"} · Certificate expires in ${tls.daysLeft != null ? tls.daysLeft + " days" : "?"} · Issuer: ${tls.issuer || "?"}` : "",
+    ].join("\n");
+  }
+
+  if (/third.party|service|analytics|tracking|ad/.test(q)) {
+    const svcs = scan.meta?.services || [];
+    if (svcs.length) {
+      const grouped = {};
+      svcs.forEach((s) => { if (!grouped[s.category]) grouped[s.category] = []; grouped[s.category].push(s.name); });
+      const lines = Object.entries(grouped).map(([cat, names]) => `- **${cat}**: ${names.join(", ")}`);
+      return `**${svcs.length} third-party services detected across ${Object.keys(grouped).length} categories:**\n\n${lines.join("\n")}\n\nEach third-party service is a trust boundary and potential supply-chain risk.`;
+    }
+    return "No third-party services detected on this page.";
+  }
+
+  return [
+    `I can answer specific questions about this scan of **${scan.targetUrl}**.`,
+    `\n**Summary:** Score **${scan.score}/100** · ${summarizeCounts(scan)}`,
+    `**Pages crawled:** ${scan.meta?.pagesCrawled || 0} · **Endpoints:** ${scan.meta?.endpointCount || scan.meta?.endpoints?.length || 0}`,
+    `**Tech:** ${(scan.meta?.tech || []).map((t) => t.name).join(", ") || "none detected"}`,
+    `\nTry asking:`,
+    `- "What should I fix first?"`,
+    `- "Explain my VibeCheck score"`,
+    `- "What CVEs affect my site?"`,
+    `- "Are my headers secure?"`,
+    `- "What third-party services are running?"`,
+  ].join("\n");
 }
 
 function summarizeCounts(scan) {

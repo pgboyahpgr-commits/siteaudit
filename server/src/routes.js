@@ -361,12 +361,13 @@ export function registerRoutes(app) {
     if (!scan) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Scan not found." } });
     const parsed = chatSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: { code: "VALIDATION", message: parsed.error.issues[0].message } });
-    const history = (await listChatMessages(scan.id, 30)).map((m) => ({ role: m.role, content: m.content }));
-    await saveChatMessage({ id: newId("cm"), scanId: scan.id, role: "user", content: parsed.data.question });
+    let history = [];
+    try { history = (await listChatMessages(scan.id, 30)).map((m) => ({ role: m.role, content: m.content })); } catch { /* DB may be down */ }
+    try { await saveChatMessage({ id: newId("cm"), scanId: scan.id, role: "user", content: parsed.data.question }); } catch { /* non-fatal */ }
     const { chatReply } = await import("./ai/ai.js");
     try {
       const { reply, provider } = await chatReply(scan, history, parsed.data.question);
-      await saveChatMessage({ id: newId("cm"), scanId: scan.id, role: "assistant", content: reply });
+      try { await saveChatMessage({ id: newId("cm"), scanId: scan.id, role: "assistant", content: reply }); } catch { /* non-fatal */ }
       res.json({ reply, provider });
     } catch (err) {
       res.status(502).json({ error: { code: "AI_ERROR", message: err.message } });
