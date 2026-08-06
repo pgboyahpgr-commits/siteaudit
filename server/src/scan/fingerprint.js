@@ -6,12 +6,13 @@ export function fingerprintFromPage(page) {
   const powered = headers["x-powered-by"];
 
   if (server) {
-    if (/nginx/i.test(server)) tech.set("Nginx", server.match(/\d+(\.\d+)+/)?.[0]);
-    else if (/apache/i.test(server)) tech.set("Apache", server.match(/\d+(\.\d+)+/)?.[0]);
-    else if (/cloudflare/i.test(server)) tech.set("Cloudflare", null);
-    else if (/vercel/i.test(server)) tech.set("Vercel", null);
-    else if (/netlify/i.test(server)) tech.set("Netlify", null);
-    else tech.set("Web server: " + server, null);
+    let matched = false;
+    if (/nginx/i.test(server)) { tech.set("Nginx", server.match(/\d+(\.\d+)+/)?.[0]); matched = true; }
+    if (/apache/i.test(server)) { tech.set("Apache", server.match(/\d+(\.\d+)+/)?.[0]); matched = true; }
+    if (/cloudflare/i.test(server)) { tech.set("Cloudflare", null); matched = true; }
+    if (/vercel/i.test(server)) { tech.set("Vercel", null); matched = true; }
+    if (/netlify/i.test(server)) { tech.set("Netlify", null); matched = true; }
+    if (!matched) tech.set("Web server: " + server, null);
   }
   if (powered) tech.set("Powered by: " + powered, null);
 

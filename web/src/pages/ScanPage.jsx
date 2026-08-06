@@ -432,11 +432,15 @@ export default function ScanPage() {
                     {f.references?.length > 0 && (
                       <div className="block refs">
                         <div className="label">References</div>
-                        {f.references.map((r) => (
-                          <a key={r} href={r} target="_blank" rel="noreferrer">
-                            {new URL(r).hostname} ↗
-                          </a>
-                        ))}
+                        {f.references.map((r) => {
+                          let label = r;
+                          try { label = new URL(r).hostname; } catch { /* use raw string */ }
+                          return (
+                            <a key={r} href={r} target="_blank" rel="noreferrer">
+                              {label} ↗
+                            </a>
+                          );
+                        })}
                       </div>
                     )}
                   </div>

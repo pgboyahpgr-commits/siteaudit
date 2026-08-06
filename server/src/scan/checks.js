@@ -113,7 +113,7 @@ export function analyzeCacheControl(path, cacheControl, status) {
   return null;
 }
 
-const OPEN_REDIRECT_RE = /(?:location|redirect|return|next|target|dest|callback|continue|goto|url)\s*[:=]\s*["']?(\/\/(?:[^"'\s]+)|\/[^\s"'<>]{1,80}|https?:\/\/(?!\1)[^"'\s<>]+)/gi;
+const OPEN_REDIRECT_RE = /(?:redirect|url|next|return|goto|target|dest|continue|forward|link|uri|path|to|ref|callback|redir)[\s]*[=:][\s]*["'\x60]?(https?:\/\/[^\s"'&<>]+)/gi;
 
 export function scanOpenRedirects(content, source) {
   const hits = [];
