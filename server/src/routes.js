@@ -531,6 +531,57 @@ export function registerRoutes(app) {
     })));
   });
 
+  // ---- URL Engineer: follow redirect chain ----
+  router.post("/url-engineer/follow", async (req, res) => {
+    const url = String(req.body?.url || "").trim();
+    if (!url) return res.status(400).json({ error: "URL required" });
+    let target;
+    try { target = new URL(url); } catch { return res.status(400).json({ error: "Invalid URL" }); }
+    
+    const chain = [];
+    let currentUrl = target.href;
+    const maxHops = 10;
+    
+    for (let i = 0; i < maxHops; i++) {
+      try {
+        const r = await fetch(currentUrl, {
+          method: "HEAD",
+          redirect: "manual",
+          headers: { "user-agent": "SiteAuditBot/1.0" },
+          signal: AbortSignal.timeout(8000),
+        });
+        const hop = {
+          url: currentUrl,
+          status: r.status,
+          location: r.headers.get("location") || null,
+          server: r.headers.get("server") || null,
+          contentType: r.headers.get("content-type") || null,
+        };
+        chain.push(hop);
+        if (r.status >= 300 && r.status < 400 && r.headers.get("location")) {
+          const loc = r.headers.get("location");
+          try {
+            currentUrl = new URL(loc, currentUrl).href;
+          } catch {
+            currentUrl = loc;
+          }
+        } else {
+          break;
+        }
+      } catch (err) {
+        chain.push({ url: currentUrl, status: 0, error: err.message });
+        break;
+      }
+    }
+    
+    res.json({
+      chain,
+      finalUrl: chain[chain.length - 1]?.url || url,
+      hopCount: chain.length,
+      isRedirect: chain.some(h => h.status >= 300 && h.status < 400),
+    });
+  });
+
   app.use(router);
   app.use("/api", router);
 }

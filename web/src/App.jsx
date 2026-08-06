@@ -11,6 +11,7 @@ import TermsPage from "./pages/TermsPage.jsx";
 import PrivacyPage from "./pages/PrivacyPage.jsx";
 import GuidePage from "./pages/GuidePage.jsx";
 import ScanHistoryPage from "./pages/ScanHistoryPage.jsx";
+import UrlEngineerPage from "./pages/UrlEngineerPage.jsx";
 import Reversiy from "./components/Reversiy.jsx";
 import TourOverlay from "./components/TourOverlay.jsx";
 import { getToken, logout } from "./api.js";
@@ -49,6 +50,7 @@ export default function App() {
           <div className="nav-links">
             <Link to="/" className="nav-pill">SCANNER</Link>
             <Link to="/detector" className="nav-pill">AI IMAGE DETECTOR</Link>
+            <Link to="/url-engineer" className="nav-pill">URL ENGINEER</Link>
             <Link to="/settings" className="nav-pill">⚙ SETTINGS</Link>
             <Link to="/guide" className="nav-pill">📖 GUIDE</Link>
             <Link to="/faq" className="nav-pill">FAQ</Link>
@@ -80,6 +82,7 @@ export default function App() {
           <Route path="/privacy" element={<PrivacyPage />} />
           <Route path="/guide" element={<GuidePage />} />
           <Route path="/history" element={<ScanHistoryPage />} />
+          <Route path="/url-engineer" element={<UrlEngineerPage />} />
         </Routes>
 
         <footer className="footer">

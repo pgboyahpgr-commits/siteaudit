@@ -89,6 +89,7 @@ export const api = {
   myScans: () => request("/my/scans"),
   saveSettings: (settings) => request("/settings", { method: "POST", body: settings }),
   getSettings: () => request("/settings"),
+  urlEngineerFollow: (url) => request("/url-engineer/follow", { method: "POST", body: { url } }),
 };
 
 export function setToken(token) {
