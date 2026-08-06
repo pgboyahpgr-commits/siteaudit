@@ -2370,4 +2370,28 @@ select:focus {
   margin: 10px 0 6px;
 }
 
+/* Light mode override */
+html.light-mode {
+  --bg: #f5f5f8; --panel: #ffffff; --panel-2: #f0f0f5;
+  --fg: #1a1a2e; --dim: #666; --line: #e0e0e8; --line-2: #d0d0d8;
+  --red: #e03040; --green: #16a34a; --cyan: #0891b2; --magenta: #7c3aed;
+}
+html.light-mode body { background: #f5f5f8; color: #1a1a2e; }
+html.light-mode .console { background: #fff; border-color: #e0e0e8; }
+html.light-mode .console-title { background: #f8f8fc; border-color: #e0e0e8; }
+html.light-mode .console-body { background: #fff; }
+html.light-mode .nav { background: #fff; border-color: #e0e0e8; }
+html.light-mode .url-input { background: #f5f5f8; border-color: #d0d0d8; color: #1a1a2e; }
+html.light-mode .bg-grid, html.light-mode .bg-noise, html.light-mode .scanlines, html.light-mode .crt-vignette { display: none; }
+html.light-mode .reversiy-panel { background: #fff; border-color: #e0e0e8; }
+html.light-mode .rp-bubble { background: #f0f0f5; }
+html.light-mode .rp-msg.assistant .rp-bubble { background: #e8f4ff; border-color: #b8d8f0; }
+html.light-mode .rp-msg.user .rp-bubble { background: #7c3aed; color: #fff; }
+html.light-mode .finding { background: #fff; border-color: #e0e0e8; }
+html.light-mode .finding-body { background: #f8f8fc; }
+html.light-mode .footer { color: #888; }
+html.light-mode .nav-pill { color: #555; }
+html.light-mode .hl { color: #0891b2; }
+html.light-mode pre { background: #f5f5f8; color: #1a1a2e; border-color: #e0e0e8; }
+
 

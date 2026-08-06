@@ -12,6 +12,7 @@ import PrivacyPage from "./pages/PrivacyPage.jsx";
 import GuidePage from "./pages/GuidePage.jsx";
 import ScanHistoryPage from "./pages/ScanHistoryPage.jsx";
 import UrlEngineerPage from "./pages/UrlEngineerPage.jsx";
+import ComparePage from "./pages/ComparePage.jsx";
 import Reversiy from "./components/Reversiy.jsx";
 import TourOverlay from "./components/TourOverlay.jsx";
 import { getToken, logout } from "./api.js";
@@ -51,6 +52,7 @@ export default function App() {
             <Link to="/" className="nav-pill">SCANNER</Link>
             <Link to="/detector" className="nav-pill">AI IMAGE DETECTOR</Link>
             <Link to="/url-engineer" className="nav-pill">URL ENGINEER</Link>
+            <Link to="/compare" className="nav-pill">⚔ COMPARE</Link>
             <Link to="/settings" className="nav-pill">⚙ SETTINGS</Link>
             <Link to="/guide" className="nav-pill">📖 GUIDE</Link>
             <Link to="/faq" className="nav-pill">FAQ</Link>
@@ -63,6 +65,12 @@ export default function App() {
             ) : (
               <Link to="/auth" className="nav-pill">SIGN IN</Link>
             )}
+            <button className="nav-pill" onClick={() => {
+              document.documentElement.classList.toggle("light-mode");
+              localStorage.setItem("sa_theme", document.documentElement.classList.contains("light-mode") ? "light" : "dark");
+            }} style={{ cursor: "pointer" }}>
+              {typeof window !== "undefined" && document.documentElement.classList.contains("light-mode") ? "☀️" : "🌙"}
+            </button>
             <a className="nav-pill live" href="/">
               <span className="dot" />
               SYSTEM ACTIVE
@@ -83,6 +91,7 @@ export default function App() {
           <Route path="/guide" element={<GuidePage />} />
           <Route path="/history" element={<ScanHistoryPage />} />
           <Route path="/url-engineer" element={<UrlEngineerPage />} />
+          <Route path="/compare" element={<ComparePage />} />
         </Routes>
 
         <footer className="footer">

@@ -582,6 +582,30 @@ export function registerRoutes(app) {
     });
   });
 
+  // ---- Scan badge ----
+  router.get("/badge/:host.svg", async (req, res) => {
+    const host = String(req.params.host || "").trim();
+    if (!host || host.length > 253 || !/^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*$/.test(host)) {
+      return res.status(400).type("image/svg+xml").send(`<svg xmlns="http://www.w3.org/2000/svg" width="180" height="40"><rect width="180" height="40" rx="6" fill="#0a0a0f" stroke="#ff3860" stroke-width="1"/><text x="10" y="28" fill="#ff3860" font-size="11" font-family="monospace" font-weight="bold">INVALID HOST</text></svg>`);
+    }
+    const scans = listScans().filter((s) => s.host === host && s.status === "completed");
+    if (!scans.length) return res.status(404).type("image/svg+xml").send(`<svg xmlns="http://www.w3.org/2000/svg" width="180" height="40"><rect width="180" height="40" rx="6" fill="#0a0a0f" stroke="#1c2b47" stroke-width="1"/><text x="10" y="28" fill="#666" font-size="11" font-family="monospace" font-weight="bold">NO SCAN DATA</text></svg>`);
+    const latest = scans[scans.length - 1];
+    const score = latest.score || 0;
+    const color = score >= 80 ? "#33ffa1" : score >= 50 ? "#ffb020" : "#ff3860";
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="180" height="40">
+  <rect width="180" height="40" rx="6" fill="#0a0a0f" stroke="#1c2b47" stroke-width="1"/>
+  <text x="10" y="16" fill="#00d4ff" font-size="7" font-family="monospace" font-weight="bold">SITEAUDIT</text>
+  <text x="10" y="33" fill="${color}" font-size="18" font-family="monospace" font-weight="900">${score}/100</text>
+  <rect x="100" y="22" width="70" height="6" rx="3" fill="#1c2b47"/>
+  <rect x="100" y="22" width="${score * 0.7}" height="6" rx="3" fill="${color}"/>
+  <text x="175" y="15" fill="#444" font-size="6" text-anchor="end">sa</text>
+</svg>`;
+    res.set("Content-Type", "image/svg+xml");
+    res.set("Cache-Control", "public, max-age=3600");
+    res.send(svg);
+  });
+
   app.use(router);
   app.use("/api", router);
 }

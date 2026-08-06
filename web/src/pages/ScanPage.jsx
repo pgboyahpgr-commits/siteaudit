@@ -10,7 +10,8 @@ import HostInfoPanel from "../components/HostInfoPanel.jsx";
 import VideoGuides from "../components/VideoGuides.jsx";
 import FindingFixTools from "../components/FindingFixTools.jsx";
 import VisionPanel from "../components/VisionPanel.jsx";
-import { downloadJSON, downloadCSV, downloadHTML } from "../report.js";
+import VibeDeepDive from "../components/VibeDeepDive.jsx";
+import { downloadJSON, downloadCSV, downloadHTML, downloadMarkdown, downloadPDF } from "../report.js";
 import { SEV_ORDER } from "../theme.js";
 import { setAgentContext } from "../agentContext.js";
 import { saveScanToHistory } from "../scanHistory.js";
@@ -39,6 +40,7 @@ export default function ScanPage() {
   const [showShare, setShowShare] = useState(false);
   const [quickFindings, setQuickFindings] = useState(null);
   const termRef = useRef(null);
+  const prevStatusRef = useRef(null);
 
   useEffect(() => {
     let stop = false;
@@ -50,6 +52,10 @@ export default function ScanPage() {
         if (stop) return;
         setScan(s);
         setError("");
+        if (s.status === "completed" && prevStatusRef.current && prevStatusRef.current !== "completed") {
+          try { new Audio("data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACAf39/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4CAf39/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4CAf39/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4CAf39/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4CAf39/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4CAf39/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4CAf39/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4CAf39/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4CAf39/f4B/f3+A").play().catch(()=>{}); } catch {}
+        }
+        prevStatusRef.current = s.status;
         setAgentContext({ scanId: s.scanId, targetUrl: s.targetUrl });
         if (s.status === "completed" && s.findings?.length > 0) {
           saveScanToHistory(s);
@@ -516,6 +522,12 @@ export default function ScanPage() {
                 <button className="btn btn-ghost btn-sm" onClick={() => downloadHTML(scan)}>
                   ⭳ HTML REPORT
                 </button>
+                <button className="btn btn-ghost btn-sm" onClick={() => downloadMarkdown(scan)}>
+                  ⭳ MARKDOWN
+                </button>
+                <button className="btn btn-ghost btn-sm" onClick={() => downloadPDF(scan)}>
+                  ⭳ PDF
+                </button>
                 <button className="btn btn-ghost btn-sm" onClick={shareReport}>
                   ⇪ SHARE REPORT
                 </button>
@@ -553,6 +565,7 @@ export default function ScanPage() {
             </h2>
           </div>
           <AiPanels scanId={scan.scanId} />
+          <VibeDeepDive scan={scan} />
           <AdvisorChat scanId={scan.scanId} />
 
           <HostInfoPanel scanId={scan.scanId} />
@@ -761,6 +774,13 @@ export default function ScanPage() {
                 </button>
                 <button className="btn btn-primary btn-sm" onClick={generateShareImage}>
                   🖼️ Share as Image
+                </button>
+                <button className="btn btn-ghost btn-sm" onClick={() => {
+                  const badgeUrl = `https://siteaudit-backend-k96o.onrender.com/api/badge/${scan.host}.svg`;
+                  navigator.clipboard.writeText(`<a href="https://siteaudit-six.vercel.app"><img src="${badgeUrl}" alt="SiteAudit Score ${scan.score}/100" /></a>`);
+                  setFullError("Badge embed code copied! Paste in your site's HTML.");
+                }}>
+                  🏅 GET EMBED BADGE
                 </button>
               </div>
               {shareImage && (
