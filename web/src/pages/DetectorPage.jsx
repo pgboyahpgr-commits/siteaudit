@@ -3,6 +3,7 @@ import { pipeline, env } from "@huggingface/transformers";
 
 env.allowLocalModels = false;
 env.allowRemoteModels = true;
+env.backends.onnx.wasm.numThreads = 4;
 
 const ANALYSIS_STEPS = [
   { id: "load",  name: "Loading Image",           desc: "Reading image data locally or fetching via proxy" },
