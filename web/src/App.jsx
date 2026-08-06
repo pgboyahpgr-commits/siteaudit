@@ -5,6 +5,7 @@ import ScanPage from "./pages/ScanPage.jsx";
 import AuthPage from "./pages/AuthPage.jsx";
 import MyScansPage from "./pages/MyScansPage.jsx";
 import FaqPage from "./pages/FaqPage.jsx";
+import DetectorPage from "./pages/DetectorPage.jsx";
 import Reversiy from "./components/Reversiy.jsx";
 import { getToken, logout } from "./api.js";
 
@@ -41,6 +42,7 @@ export default function App() {
           </Link>
           <div className="nav-links">
             <Link to="/" className="nav-pill">SCANNER</Link>
+            <Link to="/detector" className="nav-pill">AI IMAGE DETECTOR</Link>
             <Link to="/faq" className="nav-pill">FAQ</Link>
             {authed ? (
               <>
@@ -59,6 +61,7 @@ export default function App() {
 
         <Routes>
           <Route path="/" element={<HomePage />} />
+          <Route path="/detector" element={<DetectorPage />} />
           <Route path="/scan/:id" element={<ScanPage />} />
           <Route path="/auth" element={<AuthPage onAuthed={onAuthed} />} />
           <Route path="/my" element={<MyScansPage onAuthed={onAuthed} />} />
