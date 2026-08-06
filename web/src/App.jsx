@@ -12,6 +12,7 @@ import PrivacyPage from "./pages/PrivacyPage.jsx";
 import GuidePage from "./pages/GuidePage.jsx";
 import ScanHistoryPage from "./pages/ScanHistoryPage.jsx";
 import Reversiy from "./components/Reversiy.jsx";
+import TourOverlay from "./components/TourOverlay.jsx";
 import { getToken, logout } from "./api.js";
 
 export default function App() {
@@ -89,6 +90,7 @@ export default function App() {
         </footer>
 
         <Reversiy />
+        <TourOverlay />
       </div>
     </>
   );

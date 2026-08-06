@@ -308,6 +308,41 @@ export default function ScanPage() {
                       </span>
                     ))}
                   </div>
+                  {scan.meta?.services?.length > 0 && (
+                    <div className="mt">
+                      <div className="small dim" style={{ letterSpacing: 2, marginBottom: 8 }}>
+                        THIRD-PARTY SERVICES
+                      </div>
+                      {(() => {
+                        const groups = {};
+                        for (const s of scan.meta.services) {
+                          if (!groups[s.category]) groups[s.category] = [];
+                          groups[s.category].push(s.name);
+                        }
+                        const colors = {
+                          Analytics: "#4fc3f7",
+                          Ads: "#f48fb1",
+                          Payments: "#81c784",
+                          Chat: "#ce93d8",
+                          Marketing: "#ffb74d",
+                          CDN: "#90caf9",
+                          Auth: "#80cbc4",
+                        };
+                        return Object.entries(groups).map(([cat, names]) => (
+                          <div key={cat} style={{ marginBottom: 6 }}>
+                            <span className="nav-pill" style={{ margin: "0 6px 4px 0", display: "inline-block", fontSize: 10, background: colors[cat] || "#666", color: "#000", fontWeight: 700 }}>
+                              {cat}
+                            </span>
+                            {names.map((n) => (
+                              <span key={n} className="nav-pill" style={{ margin: "0 4px 4px 0", display: "inline-block", fontSize: 11, background: "rgba(0,229,255,0.08)", border: "1px solid rgba(0,229,255,0.2)" }}>
+                                {n}
+                              </span>
+                            ))}
+                          </div>
+                        ));
+                      })()}
+                    </div>
+                  )}
                   <div className="mt small dim">
                     pages: <b className="cyan">{scan.meta?.pagesCrawled ?? 0}</b> · js:{" "}
                     <b className="cyan">{scan.meta?.jsFiles?.length ?? 0}</b> · endpoints:{" "}

@@ -54,7 +54,7 @@ const MIXED_RE = /(?:src|href)="(http:\/\/[^"']+)"/gi;
 export async function runScan(scan, onProgress = () => {}) {
   const targetUrl = scan.targetUrl;
   const findings = [];
-  const meta = { tech: [], pagesCrawled: 0, jsFiles: [], endpoints: [], endpointCount: 0, cookies: [], robots: null, crawls: [], subdomains: [] };
+  const meta = { tech: [], services: [], pagesCrawled: 0, jsFiles: [], endpoints: [], endpointCount: 0, cookies: [], robots: null, crawls: [], subdomains: [] };
 
   // ---- Phase 1: Discovery ----
   onProgress(1, "Discovery", "Crawling pages and collecting source code...");
@@ -145,7 +145,30 @@ export async function runScan(scan, onProgress = () => {}) {
   // ---- Phase 2: Fingerprint ----
   onProgress(2, "Fingerprint", "Detecting technologies and versions...");
   try {
-    meta.tech = fingerprintFromPage(home);
+    const fp = fingerprintFromPage(home);
+    meta.tech = fp.tech;
+    meta.services = fp.services;
+    if (fp.services.length) {
+      const byCategory = {};
+      for (const s of fp.services) {
+        if (!byCategory[s.category]) byCategory[s.category] = [];
+        byCategory[s.category].push(s.name);
+      }
+      for (const [cat, names] of Object.entries(byCategory)) {
+        findings.push(
+          finding({
+            severity: "info",
+            category: "info",
+            title: `${cat} detected: ${names.join(", ")}`,
+            url: home.url,
+            evidence: names.join("\n"),
+            description: `${names.length} third-party ${cat.toLowerCase()} service(s) found on this page. Each represents a trust boundary and potential supply-chain attack surface.`,
+            phase: "fingerprint",
+            tool: "html",
+          })
+        );
+      }
+    }
     if (home.headers?.["server"] && !/cloudflare|vercel|netlify/i.test(home.headers["server"])) {
       findings.push(
         finding({
@@ -785,6 +808,55 @@ export async function runScan(scan, onProgress = () => {}) {
         tool: "prober",
       })
     );
+  }
+
+  // ---- Link structure analysis ----
+  try {
+    const linkCategories = { api: [], admin: [], auth: [], static: [], redirect: [], notFound: [], other: [] };
+    for (const pg of allPages) {
+      try {
+        const pgUrl = new URL(pg.url);
+        const path = pgUrl.pathname;
+        if (/\/api\/|\/v\d+\/|\/graphql|\/rest\/|\/json$/i.test(path)) {
+          linkCategories.api.push(pg.url);
+        } else if (/\/(admin|dashboard|panel|wp-admin|manage|control)/i.test(path)) {
+          linkCategories.admin.push(pg.url);
+        } else if (/\/(login|signin|signup|register|auth|oauth|account|profile)/i.test(path)) {
+          linkCategories.auth.push(pg.url);
+        } else if (/\.(css|js|png|jpg|svg|ico|woff|ttf|webp|gif|json|xml|txt)(\?.*)?$/i.test(path)) {
+          linkCategories.static.push(pg.url);
+        } else if (/redirect|return|next|goto/.test(pgUrl.search)) {
+          linkCategories.redirect.push(pg.url);
+        } else {
+          linkCategories.other.push(pg.url);
+        }
+      } catch { /* skip malformed URLs */ }
+    }
+    for (const pg of allPages) {
+      if (pg.status === 404) linkCategories.notFound.push(pg.url);
+    }
+    const summaryParts = [];
+    if (linkCategories.api.length) summaryParts.push(`${linkCategories.api.length} API routes`);
+    if (linkCategories.admin.length) summaryParts.push(`${linkCategories.admin.length} admin panels`);
+    if (linkCategories.auth.length) summaryParts.push(`${linkCategories.auth.length} auth pages`);
+    if (linkCategories.static.length) summaryParts.push(`${linkCategories.static.length} static assets`);
+    if (linkCategories.redirect.length) summaryParts.push(`${linkCategories.redirect.length} redirect pages`);
+    if (linkCategories.notFound.length) summaryParts.push(`${linkCategories.notFound.length} 404/error pages`);
+    findings.push(
+      finding({
+        severity: "info",
+        category: "info",
+        title: `Link structure: ${summaryParts.join(", ")}`,
+        url: home.url,
+        evidence: Object.entries(linkCategories).filter(([, v]) => v.length).map(([k, v]) => `${k}: ${v.slice(0, 5).join("\n")}`).join("\n\n"),
+        description: "All crawled URLs categorized by pattern. API routes, admin panels, and auth pages are high-value targets for attackers.",
+        phase: "endpoints",
+        tool: "crawler",
+      })
+    );
+    meta.linkCategories = linkCategories;
+  } catch {
+    /* non-fatal */
   }
 
   async function finish() {
