@@ -1,22 +1,24 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { api } from "../api.js";
 import { agentContext } from "../agentContext.js";
 
-const CHIPS = [
+const SCAN_CHIPS = [
+  "What should I fix first?",
+  "Explain my VibeCheck score",
+  "What's the most critical issue?",
+  "How do I improve my score?",
+];
+const HOME_CHIPS = [
   "What is SiteAudit?",
+  "How does scanning work?",
   "How do I verify ownership?",
   "What does VibeCheck mean?",
-  "How do I fix a high finding?",
 ];
 
-const STORAGE_KEY = "reversiy_history_v1";
+const STORAGE_KEY = "reversiy_history_v2";
 
 function loadHistory() {
-  try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]").slice(-12);
-  } catch {
-    return [];
-  }
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]").slice(-20); } catch { return []; }
 }
 
 function PetFace({ talking }) {
@@ -25,8 +27,7 @@ function PetFace({ talking }) {
       <div className="pet-head">
         <div className="pet-antenna"><span className="pet-dot" /></div>
         <div className="pet-eyes">
-          <span className="eye" />
-          <span className="eye" />
+          <span className="eye" /><span className="eye" />
         </div>
         <div className="pet-mouth" />
         <div className="pet-glow" />
@@ -36,83 +37,129 @@ function PetFace({ talking }) {
   );
 }
 
+function ProviderBadge({ provider }) {
+  if (!provider || provider === "unknown") return null;
+  const isLocal = provider.includes("local") || provider.includes("filtered");
+  const isLmStudio = provider.includes("lmstudio");
+  const isPollinations = provider.includes("pollinations");
+  const isGemini = provider.includes("gemini");
+  const color = isLocal ? "#666" : isLmStudio ? "#a855f7" : isPollinations ? "#22c55e" : isGemini ? "#00d4ff" : "#ffb020";
+  const label = isLocal ? "offline" : isLmStudio ? "LM Studio" : isPollinations ? "Pollinations" : isGemini ? "Gemini" : provider;
+  return (
+    <span style={{ fontSize: 9, background: color + "22", color, padding: "1px 6px", borderRadius: 4, marginLeft: 6, border: `1px solid ${color}44`, verticalAlign: "middle" }}>
+      {label}
+    </span>
+  );
+}
+
 export default function Reversiy() {
   const [open, setOpen] = useState(false);
   const [msgs, setMsgs] = useState(loadHistory);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
-  const [greeted, setGreeted] = useState(false);
+  const [greeted, setGreeted] = useState(msgs.length > 0);
   const [provider, setProvider] = useState("");
   const bodyRef = useRef(null);
+  const inputRef = useRef(null);
 
   useEffect(() => {
     if (bodyRef.current) bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
   }, [msgs, busy]);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(msgs.slice(-12)));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(msgs.slice(-20)));
   }, [msgs]);
 
-  async function send(text) {
+  const send = useCallback(async (text) => {
     const q = (text ?? input).trim();
     if (!q || busy) return;
     setInput("");
-    const next = [...msgs, { role: "user", content: q }];
+    const next = [...msgs, { role: "user", content: q, ts: Date.now() }];
     setMsgs(next);
     setBusy(true);
-    const history = next.slice(-6).map((m) => ({ role: m.role, content: m.content }));
+    const history = next.slice(-8).map((m) => ({ role: m.role, content: m.content }));
     try {
       const r = await api.agent(q, agentContext.scanId, history);
-      setMsgs((m) => [...m, { role: "assistant", content: r.reply }]);
-      setProvider(r.provider);
+      setMsgs((m) => [...m, { role: "assistant", content: r.reply, ts: Date.now() }]);
+      setProvider(r.provider || "");
     } catch {
-      // Local fallback answer if backend network has any glitch
-      let fallback = "Hey there! I live right here on SiteAudit 🛰️. Ask me anything about reading findings, score, VibeCheck, or ownership verification!";
-      const lower = q.toLowerCase();
-      if (/hi|hello|hey|yo|sup/.test(lower)) {
-        fallback = "Hey there! 👋 I'm Reversiy — your security sidekick. Paste a URL and hit RUN SCAN, then I'll help you understand findings and fix them!";
-      } else if (/verif/.test(lower)) {
-        fallback = "Verification proves site ownership! Put siteaudit-verify.txt in your public/ folder (Vercel) and redeploy, then we check it automatically.";
-      } else if (/vibe|trust/.test(lower)) {
-        fallback = "VibeCheck checks how AI-generated or template-y a site looks (placeholder text, free proxy backends, demo data).";
-      }
-      setMsgs((m) => [...m, { role: "assistant", content: fallback }]);
+      const fallback = getFallback(q);
+      setMsgs((m) => [...m, { role: "assistant", content: fallback, ts: Date.now() }]);
       setProvider("local-fallback");
     } finally {
       setBusy(false);
     }
+  }, [input, busy, msgs]);
+
+  function getFallback(q) {
+    const lower = q.toLowerCase();
+    if (/hi|hello|hey|yo|sup/.test(lower))
+      return "Hey! 👋 I'm Reversiy — your security sidekick. Paste a URL and hit RUN SCAN, then I'll help you understand findings and fix them. I work best when there's an active scan!";
+    if (/verif/.test(lower))
+      return "Ownership verification proves a site is yours. Upload siteaudit-verify.txt to your site's public/ folder (Vercel/Netlify) → redeploy → verification checks it automatically. Once verified, Full Check mode unlocks for deeper testing.";
+    if (/vibe|trust|vibecode/.test(lower))
+      return "VibeCheck scores 0-100 how 'vibe-coded' a site looks — template scaffolds, placeholder text, free proxies as backends, hardcoded demo data. High score = looks less trustworthy. Open a scan to see your site's VibeCheck with breakdowns!";
+    if (/score|grade|rating/.test(lower))
+      return "Your scan score lives in the REPORT panel at the top of scan results. Scores below 50 need urgent action, 50-79 means fix the medium/high items, 80+ is in good shape. Open a scan and I can walk you through it!";
+    if (/fix|repair|resolve|how do i/.test(lower))
+      return "Every finding in your scan report has a 'How to Fix' section with exact steps and references. Click expand on any finding to see evidence, description, fix instructions, and CVE references if applicable. I can also help with video guides!";
+    if (/scan|url|paste|start/.test(lower))
+      return "Just paste any URL on the home page → accept the consent checkbox → hit RUN SCAN. Passive scan is instant (no signup). For Full Check, verify ownership by uploading a token file to your site.";
+    if (/settings|lm studio|api key|configure/.test(lower))
+      return "Go to Settings ⚙ in the nav bar. You can add your own AI API keys (Gemini, OpenAI, etc.) or connect LM Studio for 100% local AI that runs on your machine with zero data leaving your device.";
+    if (/image|detector|ai image|fake/.test(lower))
+      return "The AI Image Detector (nav bar) runs 5 forensic engines entirely in your browser: C2PA metadata, EXIF tags, DCT frequency/watermark analysis, 8 visual heuristics, and deep learning classification. No image ever leaves your device.";
+    if (/compare|history|past/.test(lower))
+      return "Go to History 📊 in the nav (after signing in). Past scans auto-save to your browser. You can compare any two scans side-by-side to see if your security score improved over time.";
+    if (/what are you|who are you|your name/.test(lower))
+      return "I'm Reversiy 🛰️ — SiteAudit's resident AI agent. I live on every page, watching your scans, explaining findings in plain English, and turning them into fixes. Powered by a chain of AI providers: LM Studio (your machine) → Gemini → xAI → Pollinations (guaranteed fallback).";
+    return "I can help with: reading scan findings & scores, VibeCheck explanations, ownership verification, fix guides, how SiteAudit works, and general web security. Open a scan and ask me 'what should I fix first?' 🤖";
   }
 
   function toggle() {
-    setOpen((o) => !o);
-    if (!open && !greeted && msgs.length === 0) {
-      setGreeted(true);
-      setBusy(true);
-      api
-        .agent("Hi! Introduce yourself super briefly and tell me the best thing to do first on this page.", agentContext.scanId, [])
-        .then((r) => {
-          setMsgs([{ role: "assistant", content: r.reply }]);
-          setProvider(r.provider);
-        })
-        .finally(() => setBusy(false));
-    }
+    setOpen((o) => {
+      const next = !o;
+      if (next && !greeted && msgs.length === 0) {
+        setGreeted(true);
+        setBusy(true);
+        api.agent("Hi! Introduce yourself super briefly and tell me the best thing to do first on this page.", agentContext.scanId, [])
+          .then((r) => {
+            setMsgs([{ role: "assistant", content: r.reply, ts: Date.now() }]);
+            setProvider(r.provider || "");
+          })
+          .catch(() => {
+            setMsgs([{ role: "assistant", content: "Hey! 👋 I'm Reversiy — your security sidekick on every page. Paste a URL on the home page and hit RUN SCAN to get started! Ask me anything about security, findings, or how SiteAudit works.", ts: Date.now() }]);
+            setProvider("local-fallback");
+          })
+          .finally(() => setBusy(false));
+      }
+      return next;
+    });
   }
 
   function onKey(e) {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      send();
-    }
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
   }
+
+  function clearChat() {
+    setMsgs([]);
+    setGreeted(false);
+    setProvider("");
+    localStorage.removeItem(STORAGE_KEY);
+  }
+
+  function copyMessage(content) {
+    navigator.clipboard?.writeText(content).catch(() => {});
+  }
+
+  const chips = agentContext.scanId ? SCAN_CHIPS : HOME_CHIPS;
 
   return (
     <>
       <button className={`reversiy-fab ${open ? "open" : ""}`} onClick={toggle} aria-label="Toggle Reversiy">
         <PetFace talking={busy} />
-        <div className="reversiy-fab-label">
-          <span className="dot" /> REVERSIY
-        </div>
-        <span className="reversiy-fab-badge">{busy ? "···" : msgs.length}</span>
+        <div className="reversiy-fab-label"><span className="dot" /> REVERSIY</div>
+        <span className="reversiy-fab-badge">{busy ? "···" : msgs.length || ""}</span>
       </button>
 
       {open && (
@@ -120,60 +167,68 @@ export default function Reversiy() {
           <div className="rp-head">
             <PetFace talking={busy} />
             <div className="rp-title">
-              <div className="rp-name">
-                REVERSIY <span className="dot" />
-              </div>
+              <div className="rp-name">REVERSIY <span className="dot" /></div>
               <div className="rp-sub">
-                {busy ? "thinking..." : provider ? `answered via ${provider}` : "AI security agent · online"}
+                {busy ? "thinking..." : provider ? <>answered via <ProviderBadge provider={provider} /></> : "AI security agent · online"}
               </div>
             </div>
-            <button className="rp-close" onClick={() => setOpen(false)} aria-label="Close">
-              ✕
-            </button>
+            <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+              {msgs.length > 0 && (
+                <button onClick={clearChat} title="Clear chat" style={{ background: "none", border: "none", color: "var(--dim)", cursor: "pointer", fontSize: 14, padding: "2px 6px" }}>🗑</button>
+              )}
+              <button className="rp-close" onClick={() => setOpen(false)} aria-label="Close">✕</button>
+            </div>
           </div>
 
           <div className="rp-body" ref={bodyRef}>
-            {msgs.length === 0 && (
+            {msgs.length === 0 && !busy && (
               <div className="rp-empty">
                 <PetFace talking={false} />
-                <p>I'm Reversiy — your security sidekick on every page. Ask me anything!</p>
+                <p>I'm Reversiy — your AI security sidekick. Ask me anything about your scan, findings, fixes, or how SiteAudit works!</p>
+                <p className="small dim" style={{ marginTop: 6 }}>
+                  {agentContext.scanId ? "I see your active scan — ask about specific findings or your score!" : "Run a scan first and I can explain every finding in plain English."}
+                </p>
               </div>
             )}
             {msgs.map((m, i) => (
               <div key={i} className={`rp-msg ${m.role}`}>
                 {m.role === "assistant" && <span className="rp-avatar">R</span>}
-                <div className="rp-bubble">{m.content}</div>
+                <div className="rp-bubble-wrapper">
+                  <div className="rp-bubble">{m.content}</div>
+                  {m.role === "assistant" && (
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 3 }}>
+                      <span style={{ fontSize: 9, color: "var(--dim)", cursor: "pointer" }} onClick={() => copyMessage(m.content)}>
+                        📋 copy
+                      </span>
+                    </div>
+                  )}
+                </div>
               </div>
             ))}
             {busy && (
               <div className="rp-msg assistant">
                 <span className="rp-avatar">R</span>
-                <div className="rp-bubble typing">
-                  <span className="t" /><span className="t" /><span className="t" />
-                </div>
+                <div className="rp-bubble typing"><span className="t" /><span className="t" /><span className="t" /></div>
               </div>
             )}
           </div>
 
           <div className="rp-chips">
-            {CHIPS.map((c) => (
-              <button key={c} className="rp-chip" onClick={() => send(c)} disabled={busy}>
-                {c}
-              </button>
+            {chips.map((c) => (
+              <button key={c} className="rp-chip" onClick={() => send(c)} disabled={busy}>{c}</button>
             ))}
           </div>
 
           <div className="rp-input">
             <input
+              ref={inputRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={onKey}
               placeholder={agentContext.scanId ? "Ask about this scan..." : "Ask Reversiy anything..."}
               disabled={busy}
             />
-            <button className="rp-send" onClick={() => send()} disabled={busy || !input.trim()}>
-              ⇪
-            </button>
+            <button className="rp-send" onClick={() => send()} disabled={busy || !input.trim()}>⇪</button>
           </div>
         </div>
       )}

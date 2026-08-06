@@ -2200,6 +2200,12 @@ select:focus {
   background: var(--magenta);
   color: #fff;
 }
+.rp-bubble-wrapper {
+  max-width: 82%;
+}
+.rp-msg.user .rp-bubble-wrapper {
+  margin-left: auto;
+}
 .rp-bubble.typing {
   display: flex;
   gap: 4px;
