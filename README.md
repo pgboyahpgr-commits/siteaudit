@@ -58,6 +58,7 @@ their own site, in their own account, with their own data.
 | Area | What you get |
 |------|--------------|
 | Crawl & reverse-engineer | Polite same-host crawler, JS source analysis, endpoint map (status, content-type, API flag), subdomain enumeration via crt.sh |
+| Host intelligence | DNS (A/AAAA/NS/MX/TXT), open-port scan, live TLS cert info (issuer, expiry, protocol) via DoH + `node:tls` |
 | Exposures | ~90-path probe (`.git`, `.env`, SQL dumps, Actuator, Swagger, admin panels), directory listings, source maps, security.txt check, soft-404 filtering |
 | Secrets & leaks | AWS/Stripe/OpenAI/GitHub/Slack keys, DB URIs, JWTs, private keys, emails, stack traces, internal IPs |
 | Config & headers | 6 required + 3 advanced security headers, CSP weakness analysis, HTTP-method probing, cookie flags, CORS, cache-control on sensitive paths, HTTP→HTTPS redirect |
@@ -68,7 +69,10 @@ their own site, in their own account, with their own data.
 | VibeCheck | 0–100 "how vibe-coded" score, detected signals, AI recommendations |
 | Advisor Chat | Ask anything about your scan — grounded answers |
 | Full Check | Active testing unlocked only after ownership verification |
+| Verification UX | One-click token download, "open verify URL" check, live instructions for file/meta/header/DNS/CNAME/email |
+| Sharing | Public shareable HTML report (`/scan/:id/report`), save-to-account button, JSON/CSV/HTML export |
 | Account & history | JWT + bcrypt + SQLite; saved scans; Recharts score history |
+| FAQ | Full in-app FAQ: how it works, verification, VibeCheck, privacy |
 
 ---
 
@@ -176,9 +180,10 @@ every 8s, and only then unlocks the **Full Check**. Full details: [docs/VERIFICA
 - Consent checkbox records URL + timestamp + verifier IP for every scan.
 - Full Check (active testing) is impossible without verified ownership.
 - Scanner scope-locks to the submitted host.
-- Rate limits (15 scans/hour/IP, loopback-exempt) + soft pacing.
+- Soft pacing between requests during crawling.
 - Passwords are bcrypt-hashed; API keys live only in backend env vars.
 - AI responses are grounded in your scan data and instructed never to invent CVEs.
+- Verification tokens are random, expire in 60 minutes, and are stored only as SHA-256 hashes.
 
 ---
 

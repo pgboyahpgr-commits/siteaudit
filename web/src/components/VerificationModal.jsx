@@ -99,6 +99,22 @@ export default function VerificationModal({ scan, onClose, onVerified }) {
   }
 
   const isEmail = method === "email";
+  const isFile = method === "file";
+
+  function downloadTokenFile() {
+    if (!challenge) return;
+    const blob = new Blob([challenge.token], { type: "text/plain" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "siteaudit-verify.txt";
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  function openVerifyUrl() {
+    if (!challenge?.instructions?.url) return;
+    window.open(challenge.instructions.url, "_blank", "noopener");
+  }
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -188,6 +204,16 @@ export default function VerificationModal({ scan, onClose, onVerified }) {
                 <small>TOKEN — click to copy</small>
                 {challenge.token}
               </div>
+              {isFile && (
+                <div className="file-actions">
+                  <button className="btn btn-ghost btn-sm" onClick={downloadTokenFile}>
+                    ⭳ DOWNLOAD TOKEN FILE
+                  </button>
+                  <button className="btn btn-ghost btn-sm" onClick={openVerifyUrl}>
+                    OPEN VERIFY URL ↗
+                  </button>
+                </div>
+              )}
               <div className="small dim" style={{ marginBottom: 14 }}>
                 Expires {new Date(challenge.expiresAt).toLocaleTimeString()}.
                 {!isEmail && " Once the token is live on your site, we auto-check every 8 seconds — or click now."}

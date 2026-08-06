@@ -19,23 +19,6 @@ import { registerUser, loginUser, requireAuth } from "./auth.js";
 import { listUserScans, saveChatMessage, listChatMessages } from "./db.js";
 import { newId } from "./store.js";
 
-const rateHits = new Map();
-function isLoopback(ip) {
-  return /^127\.|^::1$|^::ffff:127\./.test(ip || "");
-}
-function rateLimit(ip, key, max, windowMs) {
-  if (isLoopback(ip)) return true;
-  const k = `${ip}:${key}`;
-  const now = Date.now();
-  const rec = rateHits.get(k);
-  if (!rec || now - rec.t > windowMs) {
-    rateHits.set(k, { t: now, n: 1 });
-    return true;
-  }
-  rec.n += 1;
-  return rec.n <= max;
-}
-
 const scanSchema = z.object({
   url: z.string().min(1).max(2048),
   mode: z.enum(["passive", "full"]).optional(),
@@ -139,6 +122,7 @@ function publicScan(scan) {
     meta: slimMeta(scan.meta),
     error: scan.error || null,
     hasAi: !!scan.ai,
+    ownerId: scan.userId || null,
     findingsSummary: counts,
     createdAt: scan.createdAt,
     completedAt: scan.completedAt,
@@ -183,10 +167,6 @@ export function registerRoutes(app) {
 
   // ---- Create scan ----
   router.post("/scan", async (req, res) => {
-    const ip = req.ip || "unknown";
-    if (!rateLimit(ip, "scan", 15, 3600_000)) {
-      return res.status(429).json({ error: { code: "RATE_LIMIT", message: "Scan quota reached (15/hour per IP). Try again in a few minutes." } });
-    }
     const parsed = scanSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({ error: { code: "VALIDATION", message: parsed.error.issues[0].message } });
@@ -209,7 +189,7 @@ export function registerRoutes(app) {
       consent: true,
       consentTs: new Date().toISOString(),
     });
-    logConsent({ url: url.href, ip, mode, agreed: true });
+    logConsent({ url: url.href, ip: req.ip || "unknown", mode, agreed: true });
     enqueue(scan.id);
     return res.status(201).json(publicScan(scan));
   });
@@ -227,15 +207,41 @@ export function registerRoutes(app) {
     return res.json({ total: scan.findings?.length || 0, findings: scan.findings || [] });
   });
 
+  router.get("/scan/:id/host-info", async (req, res) => {
+    const scan = getScan(req.params.id);
+    if (!scan) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Scan not found." } });
+    if (!scan.meta?.hostInfo) return res.status(503).json({ error: { code: "NO_HOST_INFO", message: "Host info is not available yet — wait for the scan to complete." } });
+    return res.json(scan.meta.hostInfo);
+  });
+
+  // ---- Shareable HTML report ----
+  router.get("/scan/:id/report", async (req, res) => {
+    const scan = getScan(req.params.id);
+    if (!scan) return res.status(404).send("<h1>SiteAudit</h1><p>Report not found.</p>");
+    if (scan.status !== "completed") return res.type("text/html").send("<h1>SiteAudit</h1><p>This scan is still running — refresh shortly.</p>");
+    const { renderReport } = await import("./report.js");
+    res.type("text/html").send(renderReport(scan, `${req.protocol}://${req.get("host")}`));
+  });
+
   // ---- AI analysis for a scan ----
   router.get("/scan/:id/ai", async (req, res) => {
     const scan = getScan(req.params.id);
     if (!scan) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Scan not found." } });
-    if (scan.ai?.summary && scan.ai?.vibe?.assessment) return res.json({ ai: scan.ai });
+    if (req.query.refresh) updateScan(scan.id, { ai: null });
+    const fresh = req.query.refresh ? null : scan.ai;
+    if (fresh?.summary && fresh?.vibe?.assessment) return res.json({ ai: fresh });
     const { ensureAiAnalysis } = await import("./ai/ai.js");
     const ai = await ensureAiAnalysis(scan.id);
     if (!ai) return res.status(503).json({ error: { code: "AI_UNAVAILABLE", message: "AI analysis could not be generated right now." } });
     return res.json({ ai });
+  });
+
+  // ---- Save a scan to the signed-in account ----
+  router.post("/scan/:id/save", requireAuth, async (req, res) => {
+    const scan = getScan(req.params.id);
+    if (!scan) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Scan not found." } });
+    updateScan(scan.id, { userId: req.userId });
+    return res.json({ saved: true, scanId: scan.id });
   });
 
   // ---- AI Security Advisor chat ----

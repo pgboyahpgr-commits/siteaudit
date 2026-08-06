@@ -4,6 +4,7 @@ import HomePage from "./pages/HomePage.jsx";
 import ScanPage from "./pages/ScanPage.jsx";
 import AuthPage from "./pages/AuthPage.jsx";
 import MyScansPage from "./pages/MyScansPage.jsx";
+import FaqPage from "./pages/FaqPage.jsx";
 import { getToken, logout } from "./api.js";
 
 export default function App() {
@@ -39,6 +40,7 @@ export default function App() {
           </Link>
           <div className="nav-links">
             <Link to="/" className="nav-pill">SCANNER</Link>
+            <Link to="/faq" className="nav-pill">FAQ</Link>
             {authed ? (
               <>
                 <Link to="/my" className="nav-pill">MY SCANS</Link>
@@ -59,6 +61,7 @@ export default function App() {
           <Route path="/scan/:id" element={<ScanPage />} />
           <Route path="/auth" element={<AuthPage onAuthed={onAuthed} />} />
           <Route path="/my" element={<MyScansPage onAuthed={onAuthed} />} />
+          <Route path="/faq" element={<FaqPage />} />
         </Routes>
 
         <footer className="footer">

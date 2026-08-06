@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useParams, Link } from "react-router-dom";
-import { api } from "../api.js";
+import { api, getToken } from "../api.js";
 import ScoreRing from "../components/ScoreRing.jsx";
 import VerificationModal from "../components/VerificationModal.jsx";
 import EndpointTable from "../components/EndpointTable.jsx";
 import AiPanels from "../components/AiPanels.jsx";
 import AdvisorChat from "../components/AdvisorChat.jsx";
+import HostInfoPanel from "../components/HostInfoPanel.jsx";
 import { downloadJSON, downloadCSV, downloadHTML } from "../report.js";
 import { SEV_ORDER } from "../theme.js";
 
@@ -29,6 +30,7 @@ export default function ScanPage() {
   const [expanded, setExpanded] = useState({});
   const [showVerify, setShowVerify] = useState(false);
   const [fullError, setFullError] = useState("");
+  const [saved, setSaved] = useState(false);
   const termRef = useRef(null);
 
   useEffect(() => {
@@ -144,6 +146,26 @@ export default function ScanPage() {
     }
   }
 
+  async function saveToAccount() {
+    try {
+      await api.saveScan(id);
+      setSaved(true);
+    } catch (err) {
+      if (err.status === 401) window.location.href = "/auth";
+      else setFullError(err.message);
+    }
+  }
+
+  async function shareReport() {
+    const url = `${window.location.origin}/scan/${scan.scanId}/report`;
+    try {
+      await navigator.clipboard.writeText(url);
+      setFullError("Report link copied: " + url);
+    } catch {
+      window.open(url, "_blank", "noopener");
+    }
+  }
+
   return (
     <>
       <div className="section-head">
@@ -160,6 +182,22 @@ export default function ScanPage() {
           {scan.verified ? "OWNERSHIP VERIFIED" : "NOT VERIFIED"}
         </span>
       </div>
+
+      {/* ---- SAVE TO ACCOUNT ---- */}
+      {!saved && scan.ownerId == null && scan.status === "completed" && (
+        <div className="save-banner">
+          <span>This scan isn't saved to an account yet.</span>
+          {getToken() ? (
+            <button className="btn btn-ghost btn-sm" onClick={saveToAccount}>
+              SAVE TO MY ACCOUNT →
+            </button>
+          ) : (
+            <Link to="/auth" className="btn btn-ghost btn-sm">
+              SIGN IN TO SAVE →
+            </Link>
+          )}
+        </div>
+      )}
 
       {/* ---- VERIFICATION PANEL (always visible when not verified) ---- */}
       {!scan.verified && (
@@ -279,6 +317,9 @@ export default function ScanPage() {
                 <button className="btn btn-ghost btn-sm" onClick={() => downloadHTML(scan)}>
                   ⭳ HTML REPORT
                 </button>
+                <button className="btn btn-ghost btn-sm" onClick={shareReport}>
+                  ⇪ SHARE REPORT
+                </button>
                 {scan.verified ? (
                   <button className="btn btn-magenta btn-sm" onClick={runFull}>
                     🚀 RUN FULL CHECK
@@ -299,6 +340,8 @@ export default function ScanPage() {
             </div>
           )}
           {scan.meta?.endpoints?.length > 0 && <EndpointTable endpoints={scan.meta.endpoints} />}
+
+          <HostInfoPanel scanId={scan.scanId} />
 
           {/* ---- AI ANALYSIS ---- */}
           <div className="section-head">

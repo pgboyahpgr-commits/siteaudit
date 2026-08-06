@@ -21,6 +21,7 @@ import {
 } from "./checks.js";
 import { lookupCves } from "./cve.js";
 import { getFix, computeScore } from "./fixes.js";
+import { collectHostInfo } from "./hostinfo.js";
 
 let findSeq = 0;
 const newFindingId = () => `fn_${(++findSeq).toString(36)}${Math.random().toString(36).slice(2, 6)}`;
@@ -78,7 +79,7 @@ export async function runScan(scan, onProgress = () => {}) {
           tool: "crawler",
         })
       );
-      return finish();
+      return await finish();
     }
   } catch (err) {
     findings.push(
@@ -93,7 +94,7 @@ export async function runScan(scan, onProgress = () => {}) {
         tool: "crawler",
       })
     );
-    return finish();
+    return await finish();
   }
 
   const home = crawlResult.pages.find((p) => p.url === crawlResult.baseUrl) || crawlResult.pages[0];
@@ -786,15 +787,21 @@ export async function runScan(scan, onProgress = () => {}) {
     );
   }
 
-  function finish() {
+  async function finish() {
     meta.vibeSources = {
-      html: sources.filter((s) => s.kind === "html").slice(0, 4).map((s) => s.content).join(" ").slice(0, 120000),
-      js: sources.filter((s) => s.kind === "js").slice(0, 4).map((s) => s.content).join(" ").slice(0, 120000),
+      html: sources.filter((s) => s.kind === "html").slice(0, 4).map((s) => s.content).join(" ").slice(0, 200000),
+      js: sources.filter((s) => s.kind === "js").slice(0, 4).map((s) => s.content).join(" ").slice(0, 500000),
     };
     meta.titles = allPages.map((p) => p.title).filter(Boolean).slice(0, 20);
+    meta.uniquePages = new Set(allPages.map((p) => `${(p.html || "").length}|${p.title}|${(p.html || "").slice(0, 200)}`)).size;
+    try {
+      meta.hostInfo = await collectHostInfo(new URL(targetUrl).hostname);
+    } catch {
+      meta.hostInfo = null;
+    }
     const score = computeScore(findings);
     return { findings, score, meta };
   }
 
-  return finish();
+  return await finish();
 }

@@ -1686,3 +1686,94 @@ select:focus {
   opacity: 0.6;
 }
 
+/* ---- Save banner ---- */
+.save-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  margin-top: 16px;
+  border: 1px solid #2a3a6e;
+  border-left: 3px solid var(--cyan);
+  background: #0a1128;
+  font-size: 13px;
+  flex-wrap: wrap;
+}
+
+/* ---- File verification actions ---- */
+.file-actions {
+  display: flex;
+  gap: 10px;
+  margin: 12px 0;
+  flex-wrap: wrap;
+}
+
+/* ---- FAQ ---- */
+.faq-item {
+  border-top: 1px dashed #1c2b4f;
+  padding: 6px 0;
+}
+.faq-item summary {
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 2px;
+  font-size: 14px;
+  color: var(--cyan);
+  list-style: none;
+}
+.faq-item summary::-webkit-details-marker {
+  display: none;
+}
+.faq-item summary:hover {
+  color: #fff;
+}
+.faq-chev {
+  color: var(--magenta);
+  font-size: 10px;
+  transition: transform 0.15s;
+}
+.faq-item[open] .faq-chev {
+  transform: rotate(90deg);
+}
+.faq-q {
+  flex: 1;
+}
+.faq-a {
+  padding: 4px 2px 14px 2px;
+  font-size: 13.5px;
+  line-height: 1.7;
+  color: #c6d2e4;
+  max-width: 86ch;
+}
+
+/* ---- Host info ---- */
+.hi-row {
+  display: grid;
+  grid-template-columns: 150px 1fr;
+  gap: 10px;
+  padding: 5px 0;
+  border-bottom: 1px dashed #16224a;
+  font-size: 12.5px;
+}
+.hi-k {
+  color: var(--cyan);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-size: 11px;
+  padding-top: 2px;
+}
+.hi-v {
+  word-break: break-all;
+}
+.hi-ok {
+  color: var(--green);
+}
+.hi-bad {
+  color: #ff9f1a;
+}
+
+

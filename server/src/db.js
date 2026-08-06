@@ -43,7 +43,8 @@ export function upsertScan(scan) {
     INSERT INTO scans (id, user_id, target_url, mode, status, score, verified, created_at, completed_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
-      status=excluded.status, score=excluded.score, verified=excluded.verified, completed_at=excluded.completed_at
+      status=excluded.status, score=excluded.score, verified=excluded.verified, completed_at=excluded.completed_at,
+      user_id=excluded.user_id
   `);
   stmt.run(
     scan.id,

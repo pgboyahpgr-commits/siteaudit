@@ -62,10 +62,26 @@ export async function validateToken(verification, token) {
   try {
     switch (verification.method) {
       case "file": {
-        const res = await httpGet(`${origin}/.well-known/siteaudit-verify.txt`, { timeout: 12000 });
-        const body = (res.text || "").trim();
+        const paths = ["/.well-known/siteaudit-verify.txt", "/siteaudit-verify.txt", "/verify.txt"];
+        let body = "";
+        let tried = "";
+        for (const p of paths) {
+          tried = `${origin}${p}`;
+          const res = await httpGet(tried, { timeout: 12000 });
+          if (res.ok) {
+            body = (res.text || "").trim();
+            break;
+          }
+        }
         if (body === token) return ok(verification);
-        return { ok: false, reason: `File not found or token mismatch (got "${body.slice(0, 40) || "empty"}"). Make sure https://${host}/.well-known/siteaudit-verify.txt serves exactly: ${token}` };
+        const looksLikeHtml = /^<!doctype|^<html|<script|<head/i.test(body);
+        if (looksLikeHtml) {
+          return {
+            ok: false,
+            reason: `Your site is serving its app page (index.html) at ${tried} — the token file isn't being served. Add the file to your project's public/ or static folder and redeploy (on Vercel it must be inside public/), or use the Meta Tag method instead.`,
+          };
+        }
+        return { ok: false, reason: `Token file not found. We checked ${tried} (got "${body.slice(0, 40) || "empty"}"). Make sure the file contains exactly: ${token}` };
       }
       case "meta": {
         const res = await httpGet(`${origin}/`, { timeout: 12000 });

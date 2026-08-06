@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { HERO_ART } from "../theme.js";
 import { api } from "../api.js";
 
@@ -154,6 +154,10 @@ export default function HomePage() {
       <div className="legal-warn">
         ⚠ LEGAL GATE: passive scans require the consent checkbox above. Active testing (Full Check) requires you to
         prove you control the site — we verify by fetching a token from your own website.
+      </div>
+
+      <div className="center small dim" style={{ marginTop: 18 }}>
+        How it works, verification steps &amp; common fixes → <Link to="/faq" className="hl">FAQ</Link>
       </div>
     </>
   );
