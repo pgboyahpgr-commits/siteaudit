@@ -39,6 +39,7 @@ export default function ScanPage() {
   const [shareMsg, setShareMsg] = useState("");
   const [saved, setSaved] = useState(false);
   const [showShare, setShowShare] = useState(false);
+  const [shareImage, setShareImage] = useState(null);
   const [quickFindings, setQuickFindings] = useState(null);
   const termRef = useRef(null);
   const prevStatusRef = useRef(null);

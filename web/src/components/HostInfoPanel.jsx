@@ -76,6 +76,14 @@ export default function HostInfoPanel({ scanId }) {
         <Row k="Port 80 (HTTP)" v={data.ports.http ? "OPEN" : "closed"} ok={!data.ports.http} />
         <Row k="Port 443 (HTTPS)" v={data.ports.https ? "OPEN" : "closed"} ok={data.ports.https} />
         <Row k="Port 22 (SSH)" v={data.ports.ssh ? "OPEN" : "closed"} ok={!data.ports.ssh} />
+        <Row k="Port 8080 (HTTP-Alt)" v={data.ports["http-alt"] ? "OPEN" : "closed"} ok={!data.ports["http-alt"]} />
+        <Row k="Port 8443 (HTTPS-Alt)" v={data.ports["https-alt"] ? "OPEN" : "closed"} ok={!data.ports["https-alt"]} />
+        {data.ports.mysql ? <Row k="Port 3306 (MySQL)" v="OPEN" ok={false} /> : null}
+        {data.ports.postgres ? <Row k="Port 5432 (Postgres)" v="OPEN" ok={false} /> : null}
+        {data.ports.mongodb ? <Row k="Port 27017 (MongoDB)" v="OPEN" ok={false} /> : null}
+        {data.ports.redis ? <Row k="Port 6379 (Redis)" v="OPEN" ok={false} /> : null}
+        {data.ports.ftp ? <Row k="Port 21 (FTP)" v="OPEN" ok={false} /> : null}
+        {data.ports.smtp ? <Row k="Port 25 (SMTP)" v="OPEN" ok={false} /> : null}
         <Row k="TLS" v={data.tls.reachable ? `TLS ${data.tls.protocol}` : "not reachable"} ok={data.tls.reachable} />
         <Row k="Certificate" v={data.tls.subject} ok={data.tls.daysLeft >= 0} />
         <Row k="Expires" v={data.tls.daysLeft != null ? `${data.tls.daysLeft} days` : "—"} ok={data.tls.daysLeft >= 30} />

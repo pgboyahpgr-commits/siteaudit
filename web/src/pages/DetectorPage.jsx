@@ -950,7 +950,7 @@ export default function DetectorPage() {
           📂 Browse Image File
         </button>
         <div style={{ display: "flex", gap: 10, maxWidth: 500, margin: "20px auto 0" }}>
-          <input type="text" className="input" placeholder="Or paste image URL..."
+          <input type="text" className="url-input" placeholder="Or paste image URL..."
             value={urlInput} onChange={e => setUrlInput(e.target.value)}
             onKeyDown={e => e.key === "Enter" && handleUrlFetch()} />
           <button className="btn btn-ghost" onClick={handleUrlFetch}>Analyze URL</button>

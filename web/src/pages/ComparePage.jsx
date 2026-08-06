@@ -51,7 +51,7 @@ function FindingsCounts({ summary }) {
     <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
       {SEV_ORDER.map((s) => (
         <span key={s} className="small dim" style={{ fontSize: 9 }}>
-          <b style={{ color: scoreColor(s === "critical" ? 0 : s === "high" ? 30 : "medium" ? 60 : "low" ? 80 : 95) }}>{summary?.[s] || 0}</b> {s}
+          <b style={{ color: scoreColor(s === "critical" ? 0 : s === "high" ? 30 : s === "medium" ? 60 : s === "low" ? 80 : 95) }}>{summary?.[s] || 0}</b> {s}
         </span>
       ))}
     </div>
@@ -165,6 +165,7 @@ export default function ComparePage() {
         api.createScan({ url: n2, mode: "passive", crawlDepth: 25, consent: c }),
       ]);
       poll(s1.scanId, setScan1, "t1"); poll(s2.scanId, setScan2, "t2");
+      setBusy(false);
     } catch (err) { setError(err.message); setBusy(false); }
   }
 
