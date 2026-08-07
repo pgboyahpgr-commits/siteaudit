@@ -158,27 +158,43 @@ export function registerRoutes(app) {
     res.json({ settings: globalThis.__saUserSettings || {} });
   });
 
-  // ---- Test an API key ----
+  // ---- API Key Inspector ----
   router.post("/settings/test-key", async (req, res) => {
     const { provider, key } = req.body || {};
-    if (!provider || !key) return res.status(400).json({ error: "provider and key required" });
-    const tests = {
-      gemini: { url: "https://generativelanguage.googleapis.com/v1beta/models?key=" + key, okStatus: [200] },
-      openai: { url: "https://api.openai.com/v1/models", headers: { authorization: "Bearer " + key }, okStatus: [200] },
-      xai: { url: "https://api.x.ai/v1/models", headers: { authorization: "Bearer " + key }, okStatus: [200] },
-      anthropic: { url: "https://api.anthropic.com/v1/messages", headers: { "x-api-key": key, "anthropic-version": "2023-06-01" }, okStatus: [200, 400, 401] },
-      mistral: { url: "https://api.mistral.ai/v1/models", headers: { authorization: "Bearer " + key }, okStatus: [200] },
-      completions: { url: "https://completions.me/api/v1/models", headers: { authorization: "Bearer " + key }, okStatus: [200] },
-      nvidiaNim: { url: "https://integrate.api.nvidia.com/v1/models", headers: { authorization: "Bearer " + key }, okStatus: [200] },
-    };
-    const t = tests[provider];
-    if (!t) return res.status(400).json({ error: "unknown provider" });
+    if (!key) return res.status(400).json({ error: "key is required" });
+
+    // If provider specified, test directly
+    if (provider) {
+      const tests = {
+        gemini: { url: "https://generativelanguage.googleapis.com/v1beta/models?key=" + key, okStatus: [200] },
+        openai: { url: "https://api.openai.com/v1/models", headers: { authorization: "Bearer " + key }, okStatus: [200] },
+        xai: { url: "https://api.x.ai/v1/models", headers: { authorization: "Bearer " + key }, okStatus: [200] },
+        anthropic: { url: "https://api.anthropic.com/v1/models", headers: { "x-api-key": key, "anthropic-version": "2023-06-01" }, okStatus: [200] },
+        mistral: { url: "https://api.mistral.ai/v1/models", headers: { authorization: "Bearer " + key }, okStatus: [200] },
+        completions: { url: "https://completions.me/api/v1/models", headers: { authorization: "Bearer " + key }, okStatus: [200] },
+        nvidiaNim: { url: "https://integrate.api.nvidia.com/v1/models", headers: { authorization: "Bearer " + key }, okStatus: [200] },
+        deepseek: { url: "https://api.deepseek.com/v1/models", headers: { authorization: "Bearer " + key }, okStatus: [200] },
+        groq: { url: "https://api.groq.com/openai/v1/models", headers: { authorization: "Bearer " + key }, okStatus: [200] },
+      };
+      const t = tests[provider];
+      if (!t) return res.status(400).json({ error: "Unknown provider" });
+      try {
+        const r = await fetch(t.url, { headers: t.headers || {}, signal: AbortSignal.timeout(10000) });
+        if (t.okStatus.includes(r.status)) return res.json({ ok: true, provider, status: r.status });
+        const err = await r.text().catch(() => "");
+        return res.status(400).json({ ok: false, provider, status: r.status, detail: err.slice(0, 200) });
+      } catch (err) {
+        return res.status(400).json({ ok: false, provider, error: err.message });
+      }
+    }
+
+    // Auto-detect mode: full key inspection
     try {
-      const r = await fetch(t.url, { headers: t.headers || {}, signal: AbortSignal.timeout(8000) });
-      if (t.okStatus.includes(r.status)) return res.json({ ok: true });
-      return res.status(400).json({ ok: false, status: r.status });
+      const { inspectKey } = await import("./scan/keyinspector.js");
+      const result = await inspectKey(key);
+      return res.json(result);
     } catch (err) {
-      return res.status(400).json({ ok: false, error: err.message });
+      return res.status(502).json({ ok: false, error: err.message });
     }
   });
 

@@ -13,6 +13,7 @@ import GuidePage from "./pages/GuidePage.jsx";
 import ScanHistoryPage from "./pages/ScanHistoryPage.jsx";
 import UrlEngineerPage from "./pages/UrlEngineerPage.jsx";
 const ComparePage = lazy(() => import("./pages/ComparePage.jsx"));
+const KeyInspectorPage = lazy(() => import("./pages/KeyInspectorPage.jsx"));
 import Reversiy from "./components/Reversiy.jsx";
 import TourOverlay from "./components/TourOverlay.jsx";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
@@ -67,6 +68,7 @@ export default function App() {
             <Link to="/" className="nav-pill" onClick={() => setNavOpen(false)}>SCANNER</Link>
             <Link to="/detector" className="nav-pill" onClick={() => setNavOpen(false)}>AI IMAGE DETECTOR</Link>
             <Link to="/url-engineer" className="nav-pill" onClick={() => setNavOpen(false)}>URL ENGINEER</Link>
+            <Link to="/key-inspector" className="nav-pill" onClick={() => setNavOpen(false)}>🔑 KEY INSPECTOR</Link>
             <Link to="/compare" className="nav-pill" onClick={() => setNavOpen(false)}>⚔ COMPARE</Link>
             <Link to="/settings" className="nav-pill" onClick={() => setNavOpen(false)}>⚙ SETTINGS</Link>
             <Link to="/guide" className="nav-pill" onClick={() => setNavOpen(false)}>📖 GUIDE</Link>
@@ -109,6 +111,7 @@ export default function App() {
           <Route path="/history" element={<ErrorBoundary><ScanHistoryPage /></ErrorBoundary>} />
           <Route path="/url-engineer" element={<ErrorBoundary><UrlEngineerPage /></ErrorBoundary>} />
           <Route path="/compare" element={<Suspense fallback={<PageLoader />}><ErrorBoundary><ComparePage /></ErrorBoundary></Suspense>} />
+          <Route path="/key-inspector" element={<Suspense fallback={<PageLoader />}><ErrorBoundary><KeyInspectorPage /></ErrorBoundary></Suspense>} />
         </Routes>
 
         <footer className="footer">

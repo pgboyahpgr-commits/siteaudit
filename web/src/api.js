@@ -94,6 +94,7 @@ export const api = {
   chat: (id, question) => request(`/scan/${id}/chat`, { method: "POST", body: { question } }),
   runFull: (id) => request(`/scan/${id}/full`, { method: "POST" }),
   runDeepScan: (id) => request(`/scan/${id}/deep`, { method: "POST" }),
+  testKey: (key) => request("/settings/test-key", { method: "POST", body: { key } }),
   getVerifyConfig: () => request("/verify/config"),
   challenge: (scanId, method) => request("/verify/challenge", { method: "POST", body: { scanId, method } }),
   verifyCheck: (verificationId, token, scanId) => request("/verify/check", { method: "POST", body: { verificationId, token, scanId } }),
