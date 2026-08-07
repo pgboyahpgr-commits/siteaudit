@@ -15,6 +15,7 @@ import UrlEngineerPage from "./pages/UrlEngineerPage.jsx";
 const ComparePage = lazy(() => import("./pages/ComparePage.jsx"));
 import Reversiy from "./components/Reversiy.jsx";
 import TourOverlay from "./components/TourOverlay.jsx";
+import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import { getToken, logout } from "./api.js";
 
 const PageLoader = () => <div className="center mt" style={{ padding: 60 }}><div className="loading"><span className="spinner" /> loading...</div></div>;
@@ -42,6 +43,7 @@ export default function App() {
   }
 
   return (
+    <ErrorBoundary>
     <>
       <div className="bg-grid" />
       <div className="bg-noise" />
@@ -94,19 +96,19 @@ export default function App() {
         </nav>
 
         <Routes>
-          <Route path="/" element={<HomePage />} />
-          <Route path="/detector" element={<Suspense fallback={<PageLoader />}><DetectorPage /></Suspense>} />
-          <Route path="/settings" element={<Suspense fallback={<PageLoader />}><SettingsPage /></Suspense>} />
-          <Route path="/scan/:id" element={<ScanPage />} />
-          <Route path="/auth" element={<AuthPage onAuthed={onAuthed} />} />
-          <Route path="/my" element={<MyScansPage onAuthed={onAuthed} />} />
-          <Route path="/faq" element={<FaqPage />} />
-          <Route path="/terms" element={<TermsPage />} />
-          <Route path="/privacy" element={<PrivacyPage />} />
-          <Route path="/guide" element={<GuidePage />} />
-          <Route path="/history" element={<ScanHistoryPage />} />
-          <Route path="/url-engineer" element={<UrlEngineerPage />} />
-          <Route path="/compare" element={<Suspense fallback={<PageLoader />}><ComparePage /></Suspense>} />
+          <Route path="/" element={<ErrorBoundary><HomePage /></ErrorBoundary>} />
+          <Route path="/detector" element={<Suspense fallback={<PageLoader />}><ErrorBoundary><DetectorPage /></ErrorBoundary></Suspense>} />
+          <Route path="/settings" element={<Suspense fallback={<PageLoader />}><ErrorBoundary><SettingsPage /></ErrorBoundary></Suspense>} />
+          <Route path="/scan/:id" element={<ErrorBoundary><ScanPage /></ErrorBoundary>} />
+          <Route path="/auth" element={<ErrorBoundary><AuthPage onAuthed={onAuthed} /></ErrorBoundary>} />
+          <Route path="/my" element={<ErrorBoundary><MyScansPage onAuthed={onAuthed} /></ErrorBoundary>} />
+          <Route path="/faq" element={<ErrorBoundary><FaqPage /></ErrorBoundary>} />
+          <Route path="/terms" element={<ErrorBoundary><TermsPage /></ErrorBoundary>} />
+          <Route path="/privacy" element={<ErrorBoundary><PrivacyPage /></ErrorBoundary>} />
+          <Route path="/guide" element={<ErrorBoundary><GuidePage /></ErrorBoundary>} />
+          <Route path="/history" element={<ErrorBoundary><ScanHistoryPage /></ErrorBoundary>} />
+          <Route path="/url-engineer" element={<ErrorBoundary><UrlEngineerPage /></ErrorBoundary>} />
+          <Route path="/compare" element={<Suspense fallback={<PageLoader />}><ErrorBoundary><ComparePage /></ErrorBoundary></Suspense>} />
         </Routes>
 
         <footer className="footer">
@@ -122,5 +124,6 @@ export default function App() {
         <TourOverlay />
       </div>
     </>
+    </ErrorBoundary>
   );
 }

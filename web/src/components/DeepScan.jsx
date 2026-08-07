@@ -723,6 +723,9 @@ const ENGINES = [
 // ── RENDER ──
 export default function DeepScan({ scan }) {
   const [expanded, setExpanded] = useState({});
+
+  if (!scan || !scan.meta) return null;
+
   const meta = scan?.meta || {};
 
   const results = useMemo(() => ENGINES.map((eng) => {

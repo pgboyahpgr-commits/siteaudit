@@ -81,14 +81,17 @@ export default function ScanPage() {
               try {
                 const data = JSON.parse(event.data);
                 if (data.error) { eventSource.close(); timer = setTimeout(load, 1300); return; }
-                setScan(prev => ({
-                  ...prev,
-                  status: data.status,
-                  progress: data.progress,
-                  score: data.score,
-                  findings: prev.findings || [],
-                  meta: { ...prev.meta, quickScanDone: data.quickScanDone },
-                }));
+                setScan(prev => {
+                  const safe = prev || { findings: [], meta: {} };
+                  return {
+                    ...safe,
+                    status: data.status,
+                    progress: data.progress,
+                    score: data.score,
+                    findings: safe.findings || [],
+                    meta: { ...(safe.meta || {}), quickScanDone: data.quickScanDone },
+                  };
+                });
                 if (data.completed) {
                   eventSource.close();
                   timer = setTimeout(load, 500);
