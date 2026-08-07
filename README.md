@@ -1,102 +1,186 @@
 # SiteAudit — AI Security, Privacy & Trust Agent
 
-> Paste a URL. SiteAudit reverse-engineers the entire site — every page, source file,
-> endpoint, and secret — then an **AI security analyst** explains your risk in plain
-> English, ranks exactly what to fix, runs a **VibeCheck** (how trustworthy does the site
-> actually look?), and answers your questions. **Built for a $0 budget.**
+> **Paste a URL. Get a complete security report in 30 seconds.**  
+> Reverse-engineer every page, API endpoint, secret, and vulnerability — then get plain-English fixes powered by 5 AI engines.  
+> **Zero cost. Zero signup. One click.**
 
-SiteAudit is an AI-powered security, privacy & trust platform for the modern web — the
-world's first web-app **reverse-engineering + trustworthiness agent**. It answers two
-questions nobody else's scanner answers:
-
-1. **"Is my app actually broken?"** — full passive recon, reverse-engineered endpoints,
-   exposed secrets, CVEs, weak config, with evidence and concrete fixes.
-2. **"Does my app look like a low-effort vibe-coded prototype?"** — a quantified
-   **VibeCheck** score with AI-written guidance to make it trustworthy.
+<p align="center">
+  <a href="https://siteaudit-six.vercel.app"><strong>🔗 Try it live → siteaudit-six.vercel.app</strong></a>
+</p>
 
 ---
 
-## Problem Statement
+## What SiteAudit Does
 
-Millions of apps are now built in hours with AI assistance. The result: **a trust crisis**.
-Independent developers and small businesses ship to production with exposed `.env` files,
-hardcoded API keys, default templates, placeholder copy, and broken security headers —
-and they have no idea. Professional pentesting costs thousands of dollars; free scanners
-cough up jargon-filled XML that a non-technical founder can't act on; and nothing
-evaluates how much an app *looks* like an untrustworthy, hastily-generated prototype.
+SiteAudit is the **most comprehensive free web security scanner** on the internet. It combines a 9-phase reverse-engineering engine with multi-provider AI analysis, a unique trustworthiness scoring system (VibeCheck), and 15 client-side forensic engines — all accessible from a single URL paste.
 
-**SiteAudit fixes this** with a free, legal, AI-powered agent that anyone can run on
-their own site, in their own account, with their own data.
+**No other tool does all of this:**
 
----
-
-## Solution Overview
-
-- **Reverse-engineering engine** crawls the site and maps every page, endpoint, API
-  route, source file, secret, and technology version.
-- **Risk engine** finds exposures, misconfigs, header issues, TLS problems, and
-  version-gated CVEs — every finding with evidence, a plain-English explanation, and a
-  step-by-step fix.
-- **AI Security Analyst** (Google Gemini → xAI Grok → Completions AI → Mistral →
-  NVIDIA NIM → OpenAI → Anthropic → **LM Studio (local)** → **built-in local
-  fallback**) writes the plain-language risk report, the prioritized fix plan, and the
-  VibeCheck narrative. Works even with zero API keys.
-- **AI Security Advisor chat** answers questions about *your* scan, grounded only in your
-  data.
-- **VibeCheck** quantifies how "vibe-coded" a site looks (boilerplate scaffolds,
-  placeholder copy, AI-generation fingerprints, dead links, missing trust markers) on a
-  0–100 scale with evidence and AI recommendations.
-- **Ownership verification** (token file / meta tag / header / DNS TXT / DNS CNAME /
-  email magic link) — the same model Google Search Console uses — gates the deeper
-  Full Check.
-- **Accounts & history** with JWT auth, bcrypt hashing, and SQLite storage (or **Supabase/Postgres** in production), so your reports are yours and re-runnable. Score history charted over time.
+| Capability | SSL Labs | Observatory | SecurityHeaders | SiteAudit |
+|-----------|----------|-------------|-----------------|-----------|
+| 9-phase crawl + scan | ✗ | ✗ | ✗ | ✓ |
+| 90-path secret probe | ✗ | ✗ | ✗ | ✓ |
+| Endpoint reverse-engineering | ✗ | ✗ | ✗ | ✓ |
+| CVE matching (22 entries) | ✗ | ✗ | ✗ | ✓ |
+| AI risk report + fix plan | ✗ | ✗ | ✗ | ✓ |
+| VibeCheck trust score | ✗ | ✗ | ✗ | ✓ |
+| AI Image Detector (5 engines) | ✗ | ✗ | ✗ | ✓ |
+| 15 client-side forensic engines | ✗ | ✗ | ✗ | ✓ |
+| GitHub CI integration | ✗ | ✗ | ✗ | ✓ |
+| Competitor side-by-side | ✗ | ✗ | ✗ | ✓ |
+| Free, no signup | ✓ | ✓ | ✓ | ✓ |
 
 ---
 
-## Key Features
+## Features
 
-| Area | What you get |
-|------|--------------|
-| Crawl & reverse-engineer | Polite same-host crawler, JS source analysis, endpoint map (status, content-type, API flag), subdomain enumeration via crt.sh |
-| Host intelligence | DNS (A/AAAA/NS/MX/TXT), open-port scan, live TLS cert info (issuer, expiry, protocol) via DoH + `node:tls` |
-| Exposures | ~90-path probe (`.git`, `.env`, SQL dumps, Actuator, Swagger, admin panels), directory listings, source maps, security.txt check, soft-404 filtering |
-| Secrets & leaks | AWS/Stripe/OpenAI/GitHub/Slack keys, DB URIs, JWTs, private keys, emails, stack traces, internal IPs |
-| Config & headers | 6 required + 3 advanced security headers, CSP weakness analysis, HTTP-method probing, cookie flags, CORS, cache-control on sensitive paths, HTTP→HTTPS redirect |
-| TLS | Handshake, expiry, self-signed, legacy protocols |
-| CVEs | Version-gated mini-CVE DB (jQuery, Angular, Bootstrap, WordPress, Lodash, PHP) |
-| AI Risk Report | Plain-language summary, severity assessment, top priorities |
-| AI Risk Report | Plain-language summary, severity assessment, top priorities |
-| AI Fix Plan | Prioritized remediation steps (action + why), plus per-finding fixes |
-| UI/UX rating | Computer-vision "eyeglass" check on desktop + mobile screenshots — 0–100 damage scores, responsive verdict, strengths & improvement lists |
-| VibeCheck | 0–100 "how vibe-coded" score, detected signals, AI recommendations |
-| VibeCheck | 0–100 "how vibe-coded" score, detected signals, AI recommendations |
-| Advisor Chat | Ask anything about your scan — grounded answers |
-| Video Fix Guides | Auto-searches YouTube (via a configurable `YT_SEARCH_API` proxy) for tutorial videos matching your top issues; every finding has a "▶ Watch tutorial" button |
-| AI Fix Prompt | One-click copy of a precise, paste-into-any-AI prompt that solves that exact finding (code/config + verification steps) |
-| Reversiy agent | Floating pixel-CRT AI pet on **every page** — answers questions, is scan-aware, greets you, and can "⚡ ask Reversiy to fix" any finding |
-| Full Check | Active testing unlocked only after ownership verification |
-| Verification UX | One-click token download, "open verify URL" check, live instructions for file/meta/header/DNS/CNAME/email |
-| Sharing | Public shareable HTML report (`/scan/:id/report`), save-to-account button, JSON/CSV/HTML export |
-| Account & history | JWT + bcrypt + SQLite; saved scans; Recharts score history |
-| FAQ | Full in-app FAQ: how it works, verification, VibeCheck, privacy |
+### 🔍 Web Scanner (9 Phases)
+1. **Discovery** — Crawl up to 50 pages, robots.txt, sitemap analysis
+2. **Fingerprint** — Detect 40+ technologies with version extraction (cloudflare-nginx → Cloudflare + Nginx)
+3. **Headers** — Audit 6 required + 3 advanced security headers, CSP, CORS, cookies, cache, HTTP→HTTPS redirect
+4. **TLS** — Handshake analysis, certificate validation, protocol check, SANs enumeration
+5. **Enumeration** — Probe 90+ paths (.git, .env, SQL dumps, Swagger, admin panels), directory listings, source maps
+6. **Endpoints** — Reverse-engineer API routes from JS source, probe each for auth requirements
+7. **Source Review** — 18 secret patterns (AWS, Stripe, OpenAI, GitHub, Slack, DB URIs, JWTs), emails, stack traces, mixed content, CSRF
+8. **CVE Matching** — 22 entries covering React, Next.js, Express, Nginx, Apache, Vue, Django, Laravel, WordPress, Bootstrap, jQuery, PHP, Node.js
+9. **Active Probes** *[Full Check only]* — SQL injection, XSS reflection, CSRF detection, open redirect tests
+
+### 🤖 AI Analysis
+- **5-provider chain:** LM Studio (your machine) → Gemini → xAI → Completions → Pollinations (guaranteed fallback)
+- **AI Site Story** — Auto-generated narrative summary of scan findings
+- **Risk Report** — Plain-language severity assessment with top priorities
+- **Fix Plan** — Prioritized remediation steps with exact code/config per finding
+- **AI Security Advisor** — Per-scan chat grounded only in your data
+- **Reversiy** — Floating AI companion on every page, works offline with local fallback
+
+### 🎯 VibeCheck — Trust Score (Unique)
+Quantifies how "vibe-coded" a site looks (0-100):
+- Boilerplate scaffold detection
+- Placeholder content / lorem ipsum
+- Free proxy backends
+- Hardcoded demo/seed data
+- Template leftover detection (Vite, CRA, Next.js defaults)
+- AI-generation fingerprints
+- Vibe score certificate with radar chart breakdown
+
+### 🔬 AI Image Detector (100% Client-Side)
+5 forensic engines running entirely in your browser:
+1. **C2PA** — Digital provenance manifest scanning (9 markers, 20+ generator names)
+2. **EXIF** — Camera metadata + 16 AI tool indicators
+3. **SynthID** — Google DeepMind DCT frequency domain watermark detection
+4. **8 Heuristic Engines** — Noise, edges, colors, patterns, chromatic aberration, coherence, blockiness, detail
+5. **WebGPU ML** — ai-source-detector-ONNX classifier (SD, Midjourney, DALL-E, Real)
+- **ELA** — Error Level Analysis forensic edit detection
+- **Weighted consensus** verdict cross-referencing all signals
+
+### 🛠️ Deep Scan — 15 Client-Side Engines
+| Metric | Score |
+|--------|-------|
+| JS Bundle Analysis | First/third-party scripts, framework detection |
+| CSS Quality | !important count, deep nesting, ID selectors |
+| Auto CSP Generator | Script/style/img/font origin enumeration |
+| Email Security | SPF/DKIM/DMARC check + DNS record generation |
+| Security.txt | Auto-generated RFC 9116 file |
+| Broken Resources | 4xx/5xx page detection |
+| Semantic HTML | Heading hierarchy, landmarks, ARIA |
+| Meta Tags | OG, Twitter Cards, canonical completeness |
+| Structured Data | JSON-LD schema validation |
+| DOM Complexity | Element count, nesting depth |
+| Third-Party Risk | Service risk scoring (Ads=high, CDN=low) |
+| SRI Check | Subresource Integrity on CDN resources |
+| Web Vitals | Estimated FCP/LCP/TBT |
+| Accessibility | Alt text, labels, lang attribute |
+| Link Health | noopener, nofollow, external vs internal |
+
+### 🔗 Additional Tools
+- **URL Engineer** — Decompose URLs, follow redirect chains, detect 30+ tracking params
+- **Side-by-Side Comparison** — Compare two sites with winner banner, diff visualization
+- **Scan History** — localStorage persistence, auto-save, side-by-side diff mode
+- **Fix Code Generator** — Platform-specific configs (Vercel, Nginx, Apache, Express, Cloudflare, Netlify)
+- **GitHub CI Generator** — One-click `.github/workflows/siteaudit.yml`
+- **Share as Image** — Branded PNG share card with score and logo
+- **Embed Badge** — SVG badge for your site showing live security score
+- **PDF/Markdown/JSON/CSV/HTML Export**
+- **Dark/Light mode** — 🌙 toggle with full component coverage
+- **Onboarding Tour** — 7-step interactive walkthrough
+- **LM Studio Integration** — Run AI 100% locally, zero data leaves your machine
+- **Easter Egg** — Try scanning `siteaudit-six.vercel.app` 😄
 
 ---
 
-## Tech Stack (assignment-compliant)
+## Architecture
 
-| Requirement | Used |
-|---|---|
-| Frontend | React 18, Vite, React Router, custom pixel-CRT design system, Recharts |
-| Data fetching | Fetch API (in `web/src/api.js`) |
-| Backend | Node.js + **Express** |
-| Auth | **JSON Web Token (JWT)** (`jsonwebtoken`) |
-| Password hashing | **bcrypt** (`bcryptjs`) |
-| Validation | **Zod** (schemas on scan/auth/challenge/chat inputs) |
-| Database | **SQLite** via `node:sqlite` (dev); pluggable **Supabase/Postgres** via `DATABASE_URL` (`db.js` facade → `db-sqlite.js` / `db-supabase.js`) |
-| AI | **Google Gemini** (default) → **xAI Grok** → **Completions AI** → **Mistral** → **NVIDIA NIM** → OpenAI → Anthropic → **LM Studio (local)** → deterministic local fallback, keyed in backend env only |
-| Deploy | Vercel/Netlify (frontend), Render/Railway (backend) |
+```
+┌─────────────────────────────────────────────────┐
+│  Frontend (React 18 + Vite 5)                    │
+│  → Vercel (https://siteaudit-six.vercel.app)     │
+│  → 14 pages, 20+ components, lazy loading        │
+└──────────────┬──────────────────────────────────┘
+               │ /api/*
+               ▼
+┌─────────────────────────────────────────────────┐
+│  Backend (Node.js 24 + Express 5)                │
+│  → Render (siteaudit-backend-k96o.onrender.com) │
+│  → 9-phase scan engine + 5-provider AI chain     │
+└──────────────┬──────────────────────────────────┘
+               │
+               ▼
+┌─────────────────────────────────────────────────┐
+│  Storage: SQLite (local) / Supabase (Postgres)   │
+│  → Dual-mode with automatic failover             │
+│  → JWT + bcrypt auth + GitHub OAuth              │
+└─────────────────────────────────────────────────┘
+```
 
-See [docs/SUBMISSION.md](docs/SUBMISSION.md) for the full mapping and deliverables.
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| **Frontend** | React 18, Vite 5, React Router 6, Recharts 3 |
+| **AI/ML (browser)** | HuggingFace Transformers (ONNX/WebGPU), DOMParser, Canvas API |
+| **Backend** | Node.js 24+, Express 5, Zod 4 |
+| **Auth** | JWT (`jsonwebtoken`), bcrypt (`bcryptjs`), GitHub OAuth |
+| **Database** | SQLite (`node:sqlite`) / PostgreSQL (`pg` via Supabase) |
+| **AI Providers** | Gemini, xAI Grok, Completions AI, Pollinations AI, LM Studio (local) |
+| **Deployment** | Vercel (frontend) + Render (backend) |
+| **Monitoring** | Health check endpoint, SSE real-time progress |
+| **Security** | Helmet-style headers, CORS, rate limiting, consent logging |
+
+---
+
+## Quickstart
+
+### Prerequisites
+- Node.js **22.5+** (24 recommended for `node:sqlite`)
+
+### Install & Run
+```bash
+npm install
+npm run dev          # API (port 4000) + Web (port 5173)
+```
+
+### Test with bundled vulnerable demo
+```bash
+node scripts/test-target.mjs    # Demo site on port 5099
+npm run dev                      # In another terminal
+```
+Scan `http://localhost:5099/` to see real findings, AI reports, VibeCheck, and all features.
+
+### Connect LM Studio (optional — local AI)
+1. Install [LM Studio](https://lmstudio.ai) → download any model → Developer tab → Start Server
+2. Go to SiteAudit Settings → Enable LM Studio → enter `http://localhost:1234/v1`
+3. All AI features now run on YOUR hardware — zero data leaves your machine
+
+### Deploy Your Own
+```bash
+# Frontend → Vercel
+cd web && vercel --prod
+
+# Backend → Render
+# Push to GitHub → Render auto-deploys from render.yaml
+```
 
 ---
 
@@ -104,132 +188,31 @@ See [docs/SUBMISSION.md](docs/SUBMISSION.md) for the full mapping and deliverabl
 
 ```
 siteaudit/
-├── web/                    # React (Vite) frontend
+├── web/                          # React (Vite) frontend
 │   └── src/
-│       ├── pages/          # HomePage, ScanPage, AuthPage, MyScansPage
-│       ├── components/     # VerificationModal, AiPanels, AdvisorChat, EndpointTable, ScoreRing
-│       ├── api.js          # fetch client (JWT-aware)
-│       ├── report.js       # JSON/HTML/CSV export
-│       ├── theme.js        # design tokens
-│       └── styles.css      # pixel-CRT design system
-├── server/                 # Node + Express API & scan engine
+│       ├── pages/                # 14 pages (Home, Scan, Auth, Compare, Detector, Settings, Guide, FAQ, etc.)
+│       ├── components/           # 20+ components (DeepScan, SiteGraph, SiteStory, VibeDeepDive, etc.)
+│       ├── api.js                # JWT-aware fetch client with retry logic
+│       ├── report.js             # JSON/CSV/HTML/Markdown/PDF export
+│       ├── scanHistory.js        # localStorage persistence
+│       └── styles.css            # 2400+ lines, dark/light themes, 4 breakpoints
+├── server/                       # Node.js + Express backend
 │   ├── src/
-│   │   ├── index.js        # Express bootstrap (CORS, JSON, errors)
-│   │   ├── routes.js       # /scan /verify /auth /ai /agent /vision /videos /chat /report + Zod + rate limits
-│   │   ├── auth.js         # JWT + bcrypt (register/login/requireAuth)
-│   │   ├── db.js           # DB facade (SQLite ↔ Supabase); db-sqlite.js + db-supabase.js
-│   │   ├── queue.js        # in-process scan queue (fires AI after completion)
-│   │   ├── store.js        # JSON persistence for scans/reports/verifications
-│   │   ├── scan/           # engine, crawl, fingerprint, checks, tls, verify, vision, fixes, cve
-│   │   └── ai/             # ai.js (multi-provider + local fallback), vibe.js
-│   ├── supabase.sql        # Postgres schema (run in Supabase SQL editor)
-│   ├── railway.json        # Railway deploy config
-│   └── .env.example        # copy to .env — AI keys live ONLY here
-├── scripts/                # test-target.mjs (deliberately-vulnerable demo site)
-├── docs/                   # full documentation set
-└── package.json            # npm workspaces (web + server)
+│   │   ├── index.js              # Server bootstrap + x-sa-settings middleware
+│   │   ├── routes.js             # 25 REST endpoints with Zod validation
+│   │   ├── auth.js               # JWT + bcrypt (register/login/GitHub OAuth)
+│   │   ├── db.js                 # DB facade (SQLite ↔ Supabase)
+│   │   ├── queue.js              # In-process scan queue with SSE progress
+│   │   ├── store.js              # JSON persistence with DB fallback
+│   │   ├── scan/                 # 9-phase engine, crawl, TLS, fingerprint, checks, verify, vision
+│   │   └── ai/                   # Multi-provider AI chain with local fallback, VibeCheck
+│   ├── supabase.sql              # PostgreSQL schema
+│   └── railway.json              # Railway deployment config
+├── render.yaml                   # Render.com blueprint
+├── vercel.json                   # Vercel config with API proxy
+├── submission.md                 # Hackathon submission document
+└── package.json                  # npm workspaces (web + server)
 ```
-
----
-
-## Quickstart
-
-### Prerequisites
-- Node.js **22.5+** (for `node:sqlite`) — 24 recommended.
-
-### Install
-```powershell
-npm install
-```
-
-### Run locally
-```powershell
-npm run dev          # starts API (port 4000) + web (port 5173) together
-```
-
-### Try it against the bundled demo target
-```powershell
-node scripts/test-target.mjs     # vulnerable demo site on port 5099
-npm run dev                      # SiteAudit
-```
-Scan `http://localhost:5099/` to see real findings, the AI Risk Report, the VibeCheck
-score (the demo triggers "Full AI prototype"), the fix plan, and the advisor chat.
-
-### Set up AI (optional — everything works without it)
-1. `Copy-Item server/.env.example server/.env`
-2. Add any of `GEMINI_API_KEY` (free at aistudio.google.com), `XAI_API_KEY`
-   (console.x.ai), `COMPLETIONS_API_KEY` (completions.me), `MISTRAL_API_KEY`,
-   `NVIDIA_NIM_API_KEY`, `OPENAI_API_KEY`, or `ANTHROPIC_API_KEY`.
-3. Restart the server. The AI analyst, Reversiy agent, and vibe narrative now use real
-   LLMs; if a provider fails or is rate-limited, SiteAudit automatically tries the next
-   provider in the chain, then falls back to local rules.
-
-#### Use LM Studio for private/local AI (optional)
-Run models 100% locally — free, offline-capable, no data leaves your machine.
-1. Install [LM Studio](https://lmstudio.ai), load any chat model, and start its local
-   server (**Developer → Start Server**; default `http://localhost:1234/v1`).
-2. Set `LMSTUDIO_ENABLED=1` (plus `LMSTUDIO_BASE_URL`/`LMSTUDIO_MODEL` if not defaults).
-3. Restart. LM Studio is last in the provider chain, so cloud providers are preferred
-   when keys exist; if you only want local, empty `AI_PROVIDER` to just `lmstudio`.
-
-#### Use Supabase for the database (optional — SQLite is default)
-1. Create a free project at [supabase.com](https://supabase.com).
-2. Open **SQL Editor**, run the schema from `server/supabase.sql`.
-3. Copy the **Connection string** (Project Settings → Database → "Direct connection"
-   for Node, or the transaction-pooler string) into `DATABASE_URL` in `server/.env`.
-4. Restart. The server auto-detects `DATABASE_URL` and switches from SQLite to
-   Postgres; the `/api/me` endpoint reports `db: "supabase"` vs `"sqlite"`.
-
-> Schema only creates tables on first startup if missing — but running
-> `server/supabase.sql` once in the Supabase SQL editor is the reliable path.
-
----
-
-## How Ownership Verification Works
-
-Modeled on Google Search Console's verification system — prove you control the site by
-placing a token where only you can:
-
-| Method | Works on `*.vercel.app`? | Needs custom domain? |
-|--------|:------------------------:|:--------------------:|
-| **Token file** at `/.well-known/siteaudit-verify.txt` | Yes | No |
-| **HTML meta tag** | Yes | No |
-| **HTTP header** (`X-SiteAudit-Token`) | Yes | No |
-| **DNS TXT** `_siteaudit` | No | Yes |
-| **DNS CNAME** `_siteaudit` | No | Yes |
-| **Email magic link** | No | Yes |
-
-The server reads the token back from **your** site (never trusts a screenshot), auto-polls
-every 8s, and only then unlocks the **Full Check**. Full details: [docs/VERIFICATION.md](docs/VERIFICATION.md).
-
----
-
-## Security & Legal Model
-
-- Consent checkbox records URL + timestamp + verifier IP for every scan.
-- Full Check (active testing) is impossible without verified ownership.
-- Scanner scope-locks to the submitted host.
-- Soft pacing between requests during crawling.
-- Passwords are bcrypt-hashed; API keys live only in backend env vars.
-- AI responses are grounded in your scan data and instructed never to invent CVEs.
-- Verification tokens are random, expire in 60 minutes, and are stored only as SHA-256 hashes.
-
----
-
-## Documentation
-
-| Document | Covers |
-|----------|--------|
-| [docs/SUBMISSION.md](docs/SUBMISSION.md) | Hackathon deliverables: problem, solution, stack mapping, demo script |
-| [docs/RESEARCH.md](docs/RESEARCH.md) | Open-source inspiration & roadmap |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System design, modules, data flow |
-| [docs/API.md](docs/API.md) | REST API reference |
-| [docs/VERIFICATION.md](docs/VERIFICATION.md) | Ownership verification how-to |
-| [docs/SCANNER-ENGINE.md](docs/SCANNER-ENGINE.md) | Engine phases + tooling |
-| [docs/REPORTING-AND-FIXES.md](docs/REPORTING-AND-FIXES.md) | Findings schema, score, fixes |
-| [docs/SECURITY-LEGAL.md](docs/SECURITY-LEGAL.md) | Legal safeguards |
-| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | $0 deployment guide |
-| [docs/TECH-STACK.md](docs/TECH-STACK.md) | Stack choices & rationale |
 
 ---
 
@@ -237,5 +220,4 @@ every 8s, and only then unlocks the **Full Check**. Full details: [docs/VERIFICA
 
 MIT — free to use, modify, and deploy.
 
-> **Important:** Use SiteAudit only on websites you own or have explicit written
-> permission to test. Unauthorized scanning is illegal in most jurisdictions.
+> **Important:** Use SiteAudit only on websites you own or have explicit written permission to test. Unauthorized scanning is illegal in most jurisdictions. Consent is recorded with timestamp and IP for every scan.
