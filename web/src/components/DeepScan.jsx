@@ -744,7 +744,7 @@ export default function DeepScan({ scan }) {
         <span className="traffic"><span className="t g" /><span className="t a" /><span className="t r" /></span>
         <span>DEEP SCAN — 15 CLIENT-SIDE ENGINES</span>
         <span className="dim" style={{ fontSize: 11, marginLeft: "auto" }}>
-          {passed}/15 passed{crtCount > 0 ? ` · ${critCount} critical` : ""}{warnCount > 0 ? ` · ${warnCount} warnings` : ""}
+          {passed}/15 passed{critCount > 0 ? ` · ${critCount} critical` : ""}{warnCount > 0 ? ` · ${warnCount} warnings` : ""}
         </span>
       </div>
       <div className="console-body">
