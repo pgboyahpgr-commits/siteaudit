@@ -59,6 +59,7 @@ export default function Reversiy() {
   const [busy, setBusy] = useState(false);
   const [greeted, setGreeted] = useState(msgs.length > 0);
   const [provider, setProvider] = useState("");
+  const [lmConnected, setLmConnected] = useState(false);
   const bodyRef = useRef(null);
   const inputRef = useRef(null);
 
@@ -68,6 +69,11 @@ export default function Reversiy() {
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(msgs.slice(-20)));
+  }, [msgs]);
+
+  useEffect(() => {
+    const lm = getLmSettings();
+    setLmConnected(!!lm);
   }, [msgs]);
 
   function getLmSettings() {
@@ -239,7 +245,7 @@ export default function Reversiy() {
             <div className="rp-title">
               <div className="rp-name">REVERSIY <span className="dot" /></div>
               <div className="rp-sub">
-                {busy ? "thinking..." : provider ? <>answered via <ProviderBadge provider={provider} /></> : "AI security agent · online"}
+                {busy ? "thinking..." : provider ? <>answered via <ProviderBadge provider={provider} /></> : <>AI security agent · online{lmConnected && <span style={{ color: "#a855f7", marginLeft: 8, fontSize: 10 }}>🧠 local</span>}</>}
               </div>
             </div>
             <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
