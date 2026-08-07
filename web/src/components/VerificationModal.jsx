@@ -77,7 +77,7 @@ export default function VerificationModal({ scan, onClose, onVerified }) {
   }
 
   async function check() {
-    if (!challenge) return;
+    if (!challenge || doneRef.current) return;
     setBusy(true);
     setStatus(null);
     try {

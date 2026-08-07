@@ -47,6 +47,7 @@ export default function ScanPage() {
   const [showShare, setShowShare] = useState(false);
   const [shareImage, setShareImage] = useState(null);
   const [quickFindings, setQuickFindings] = useState(null);
+  const quickFindingsFetched = useRef(false);
   const termRef = useRef(null);
   const prevStatusRef = useRef(null);
 
@@ -83,14 +84,16 @@ export default function ScanPage() {
                 if (data.error) { eventSource.close(); timer = setTimeout(load, 1300); return; }
                 setScan(prev => {
                   const safe = prev || { findings: [], meta: {} };
-                  return {
+                  const next = {
                     ...safe,
                     status: data.status,
                     progress: data.progress,
                     score: data.score,
                     findings: safe.findings || [],
-                    meta: { ...(safe.meta || {}), quickScanDone: data.quickScanDone },
+                    meta: { ...(safe.meta || {}) },
                   };
+                  if (data.quickScanDone != null) next.meta.quickScanDone = data.quickScanDone;
+                  return next;
                 });
                 if (data.completed) {
                   eventSource.close();
@@ -105,7 +108,8 @@ export default function ScanPage() {
           } catch {
             if (!stop) timer = setTimeout(load, 1300);
           }
-          if (s.meta?.quickScanDone && !quickFindings) {
+          if (s.meta?.quickScanDone && !quickFindings && !quickFindingsFetched.current) {
+            quickFindingsFetched.current = true;
             api.getFindings(id).then((f) => setQuickFindings(f)).catch(() => {});
           }
         }
@@ -241,7 +245,8 @@ export default function ScanPage() {
     const url = `${window.location.origin}/scan/${scan.scanId}/report`;
     try {
       await navigator.clipboard.writeText(url);
-      setFullError("Report link copied: " + url);
+      setFullError("");
+      setShareMsg("Report link copied: " + url);
     } catch {
       window.open(url, "_blank", "noopener");
     }
@@ -731,7 +736,7 @@ export default function ScanPage() {
         </div>
       )}
 
-      {showVerify && <VerificationModal scan={scan} onClose={() => setShowVerify(false)} onVerified={() => window.location.reload()} />}
+      {showVerify && <VerificationModal scan={scan} onClose={() => setShowVerify(false)} onVerified={() => { setScan(prev => ({ ...prev, verified: true })); setShowVerify(false); }} />}
 
       {showShare && (
         <div
