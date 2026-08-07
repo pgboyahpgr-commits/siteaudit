@@ -13,6 +13,7 @@ export default function HomePage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [backendReady, setBackendReady] = useState(true);
+  const [showHacker, setShowHacker] = useState(false);
 
   useEffect(() => {
     warmUpBackend().then((ok) => setBackendReady(ok)).catch(() => {});
@@ -25,6 +26,13 @@ export default function HomePage() {
     if (!/^https?:\/\//i.test(normalized)) {
       normalized = "https://" + normalized;
     }
+
+    // Easter egg: trying to scan SiteAudit itself?
+    if (/siteaudit/i.test(normalized) || /siteaudit-backend/i.test(normalized)) {
+      setShowHacker(true);
+      return;
+    }
+
     if (!/^https?:\/\/[^\s]+\.[^\s]+/i.test(normalized)) {
       setError("Enter a valid URL, e.g. https://yoursite.com");
       return;
@@ -196,6 +204,38 @@ export default function HomePage() {
       <div className="center small dim" style={{ marginTop: 18 }}>
         How it works, verification steps &amp; common fixes → <Link to="/faq" className="hl">FAQ</Link>
       </div>
+
+      {/* Self-scan easter egg */}
+      {showHacker && (
+        <div style={{ position: "fixed", inset: 0, background: "#020408", zIndex: 9999, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", fontFamily: "'JetBrains Mono', monospace" }}>
+          <div style={{ fontSize: 80, marginBottom: 20, animation: "pulse 2s infinite" }}>🛡️</div>
+          <div style={{ fontSize: 18, color: "#33ffa1", marginBottom: 8, letterSpacing: 4, textAlign: "center" }}>
+            █████ ACCESS DENIED █████
+          </div>
+          <div style={{ color: "#38e1ff", fontSize: 14, marginBottom: 4, textAlign: "center", maxWidth: 500 }}>
+            "You think you can hack the hacker?"
+          </div>
+          <div style={{ color: "#7f92b8", fontSize: 12, marginBottom: 30, textAlign: "center", maxWidth: 460, lineHeight: 1.6 }}>
+            Nice try. We see you trying to scan SiteAudit with SiteAudit.<br />
+            That's like dividing by zero. The universe might collapse.<br />
+            Try scanning <span style={{ color: "#33ffa1" }}>your own site</span> instead. We'll be here.
+          </div>
+          <button className="btn btn-primary" onClick={() => { setShowHacker(false); setUrl(""); }}
+            style={{ padding: "10px 30px", fontSize: 14 }}>
+            ← OK FINE, I'LL SCAN MY OWN SITE
+          </button>
+          <div style={{ position: "absolute", bottom: 20, color: "#3b5c7a", fontSize: 10 }}>
+            SITEAUDIT DEFENSE SYSTEM v2.0 · SELF-SCAN PROTECTION ACTIVE
+          </div>
+          <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: "100%", pointerEvents: "none", opacity: 0.05 }}>
+            {Array.from({ length: 20 }).map((_, i) => (
+              <div key={i} style={{ color: "#33ffa1", fontSize: 8, position: "absolute", top: Math.random() * 95 + "%", left: Math.random() * 95 + "%" }}>
+                {String.fromCharCode(33 + Math.random() * 90)}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </>
   );
 }
