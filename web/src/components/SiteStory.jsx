@@ -39,11 +39,12 @@ async function callLmStudio(prompt) {
       messages: [{ role: "user", content: prompt }],
       temperature: 0.7, max_tokens: 200,
     }),
-    signal: AbortSignal.timeout(10000),
+    signal: AbortSignal.timeout(45000),
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = await res.json();
-  return data?.choices?.[0]?.message?.content?.trim() || null;
+  const msg = data?.choices?.[0]?.message || {};
+  return msg.content || msg.reasoning_content || null;
 }
 
 function buildLocalNarrative(scan) {

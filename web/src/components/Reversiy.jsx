@@ -99,11 +99,12 @@ export default function Reversiy() {
       method: "POST",
       headers: { "content-type": "application/json" },
       body,
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(45000),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-    return data?.choices?.[0]?.message?.content || "";
+    const msg = data?.choices?.[0]?.message || {};
+    return msg.content || msg.reasoning_content || "";
   }
 
   const send = useCallback(async (text) => {

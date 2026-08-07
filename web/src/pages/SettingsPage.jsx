@@ -219,14 +219,16 @@ export default function SettingsPage() {
           temperature: 0.7,
           max_tokens: 300,
         }),
-        signal: AbortSignal.timeout(15000),
+        signal: AbortSignal.timeout(45000),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      const reply = data?.choices?.[0]?.message?.content || "(empty response)";
+      const msg = data?.choices?.[0]?.message || {};
+      const reply = msg.content || msg.reasoning_content || "(empty response)";
       setLmChatMessages(p => [...p, { role: "assistant", content: reply, provider: "lmstudio" }]);
     } catch (err) {
-      setLmChatMessages(p => [...p, { role: "assistant", content: "LM Studio error: " + err.message + ". Make sure LM Studio is running and the Server is started.", provider: "error" }]);
+      const errMsg = err.name === "TimeoutError" ? "LM Studio timed out after 45s — model may be too large or still loading." : err.message;
+      setLmChatMessages(p => [...p, { role: "assistant", content: "LM Studio error: " + errMsg + ". Make sure LM Studio is running and the Server is started.", provider: "error" }]);
     } finally {
       setLmChatBusy(false);
     }
