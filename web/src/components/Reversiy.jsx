@@ -24,7 +24,6 @@ function cleanReply(text) {
   out = out.replace(/<\s*thinking\s*>[\s\S]*?<\s*\/\s*thinking\s*>/gi, "");
   out = out.replace(/<\s*reasoning\s*>[\s\S]*?<\s*\/\s*reasoning\s*>/gi, "");
   out = out.replace(/```(?:thinking|reasoning|thought)[\s\S]*?```/gi, "");
-  out = out.replace(/^(Okay|Alright|Sure|Great|Well|So|Hmm|Let me|I'll|I will)\b[^.!?\n]{0,80}\n\n/i, "");
   out = out.replace(/\n{3,}/g, "\n\n").trim();
   return out;
 }
@@ -73,20 +72,17 @@ export default function Reversiy() {
   const [provider, setProvider] = useState("");
   const [lmConnected, setLmConnected] = useState(false);
   const bodyRef = useRef(null);
-  const inputRef = useRef(null);
+  const busyRef = useRef(false);
+  const greetedRef = useRef(msgs.length > 0);
+  const msgsRef = useRef(msgs);
+  const inputRefLocal = useRef("");
 
-  useEffect(() => {
-    if (bodyRef.current) bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
-  }, [msgs, busy]);
-
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(msgs.slice(-20)));
-  }, [msgs]);
-
-  useEffect(() => {
-    const lm = getLmSettings();
-    setLmConnected(!!lm);
-  }, [msgs]);
+  useEffect(() => { msgsRef.current = msgs; }, [msgs]);
+  useEffect(() => { inputRefLocal.current = input; }, [input]);
+  useEffect(() => { greetedRef.current = greeted; }, [greeted]);
+  useEffect(() => { if (bodyRef.current) bodyRef.current.scrollTop = bodyRef.current.scrollHeight; }, [msgs, busy]);
+  useEffect(() => { localStorage.setItem(STORAGE_KEY, JSON.stringify(msgs.slice(-20))); }, [msgs]);
+  useEffect(() => { setLmConnected(!!getLmSettings()); }, [msgs]);
 
   function getLmSettings() {
     try {
@@ -96,130 +92,142 @@ export default function Reversiy() {
       if (s?.lmStudio?.enabled && s.lmStudio.baseUrl) {
         return { baseUrl: s.lmStudio.baseUrl.replace(/\/+$/, ""), model: s.lmStudio.model || "local-model" };
       }
-    } catch { /* ignore */ }
+    } catch {}
     return null;
   }
 
   async function callLmStudioDirect(q) {
     const lm = getLmSettings();
     if (!lm) return null;
-    const system = "You are Reversiy, a friendly AI security companion on SiteAudit. Be concise, warm, practical. Keep answers 2-5 sentences. You can use emojis.";
-    const body = JSON.stringify({
-      model: lm.model,
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: q },
-      ],
-      temperature: 0.7,
-      max_tokens: 500,
-    });
     const res = await fetch(`${lm.baseUrl}/chat/completions`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body,
-      signal: AbortSignal.timeout(20000),
+      body: JSON.stringify({
+        model: lm.model,
+        messages: [
+          { role: "system", content: "You are Reversiy, a friendly AI security companion on SiteAudit. Be concise, warm, practical. Keep answers 2-5 sentences. Use emojis." },
+          { role: "user", content: q },
+        ],
+        temperature: 0.7,
+        max_tokens: 500,
+      }),
+      signal: AbortSignal.timeout(15000),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     const msg = data?.choices?.[0]?.message || {};
-    const raw = msg.content || msg.reasoning_content || "";
-    return cleanReply(raw);
+    return cleanReply(msg.content || "") || cleanReply(msg.reasoning_content || "") || null;
   }
 
   const send = useCallback(async (text) => {
-    const q = (text ?? input).trim();
-    if (!q || busy) return;
+    if (busyRef.current) return;
+    const q = (text ?? inputRefLocal.current).trim();
+    if (!q) return;
+    busyRef.current = true;
     setInput("");
-    const next = [...msgs, { role: "user", content: q, ts: Date.now() }];
-    setMsgs(next);
     setBusy(true);
+
+    const next = [...msgsRef.current, { role: "user", content: q, ts: Date.now() }];
+    setMsgs(next);
+    msgsRef.current = next;
     const history = next.slice(-8).map((m) => ({ role: m.role, content: m.content }));
 
-    // Try LM Studio directly from browser first (local machine)
     const lm = getLmSettings();
     if (lm) {
       try {
         const reply = await callLmStudioDirect(q);
         if (reply) {
-          setMsgs((m) => [...m, { role: "assistant", content: reply, ts: Date.now() }]);
+          const updated = [...msgsRef.current, { role: "assistant", content: reply, ts: Date.now() }];
+          msgsRef.current = updated;
+          setMsgs(updated);
           setProvider("lmstudio");
+          busyRef.current = false;
           setBusy(false);
           return;
         }
       } catch (err) {
-        console.log("[Reversiy] LM Studio direct call failed, falling back to server:", err.message);
+        console.log("[Reversiy] LM Studio failed:", err.message);
       }
     }
 
-    // Fall back to server-side API
     try {
       const r = await api.agent(q, agentContext.scanId, history);
-      setMsgs((m) => [...m, { role: "assistant", content: r.reply, ts: Date.now() }]);
+      const updated = [...msgsRef.current, { role: "assistant", content: r.reply, ts: Date.now() }];
+      msgsRef.current = updated;
+      setMsgs(updated);
       setProvider(r.provider || "");
     } catch {
       const fallback = getFallback(q);
-      setMsgs((m) => [...m, { role: "assistant", content: fallback, ts: Date.now() }]);
+      const updated = [...msgsRef.current, { role: "assistant", content: fallback, ts: Date.now() }];
+      msgsRef.current = updated;
+      setMsgs(updated);
       setProvider("local-fallback");
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
-  }, [input, busy, msgs]);
+  }, []);
 
   function getFallback(q) {
     const lower = q.toLowerCase();
     if (/hi|hello|hey|yo|sup/.test(lower))
       return "Hey! 👋 I'm Reversiy — your security sidekick. Paste a URL and hit RUN SCAN, then I'll help you understand findings and fix them. I work best when there's an active scan!";
     if (/verif/.test(lower))
-      return "Ownership verification proves a site is yours. Upload siteaudit-verify.txt to your site's public/ folder (Vercel/Netlify) → redeploy → verification checks it automatically. Once verified, Full Check mode unlocks for deeper testing.";
+      return "Ownership verification proves a site is yours. Click verify and it's instant — Full Check unlocks right away.";
     if (/vibe|trust|vibecode/.test(lower))
-      return "VibeCheck scores 0-100 how 'vibe-coded' a site looks — template scaffolds, placeholder text, free proxies as backends, hardcoded demo data. High score = looks less trustworthy. Open a scan to see your site's VibeCheck with breakdowns!";
+      return "VibeCheck scores 0-100 how 'vibe-coded' a site looks — template scaffolds, placeholder text, free proxies as backends, hardcoded demo data. High score = looks less trustworthy. Open a scan to see your site's VibeCheck!";
     if (/score|grade|rating/.test(lower))
-      return "Your scan score lives in the REPORT panel at the top of scan results. Scores below 50 need urgent action, 50-79 means fix the medium/high items, 80+ is in good shape. Open a scan and I can walk you through it!";
+      return "Your scan score lives in the REPORT panel at the top of scan results. Scores below 50 need urgent action, 50-79 means fix the medium/high items, 80+ is in good shape.";
     if (/fix|repair|resolve|how do i/.test(lower))
-      return "Every finding in your scan report has a 'How to Fix' section with exact steps and references. Click expand on any finding to see evidence, description, fix instructions, and CVE references if applicable. I can also help with video guides!";
+      return "Every finding in your scan report has a 'How to Fix' section with exact steps. Click expand on any finding to see evidence, description, fix instructions, and CVE references.";
     if (/scan|url|paste|start/.test(lower))
-      return "Just paste any URL on the home page → accept the consent checkbox → hit RUN SCAN. Passive scan is instant (no signup). For Full Check, verify ownership by uploading a token file to your site.";
+      return "Just paste any URL on the home page → accept the consent checkbox → hit RUN SCAN. Passive scan is instant (no signup). For Full Check, click Verify and you're set.";
     if (/settings|lm studio|api key|configure/.test(lower))
-      return "Go to Settings ⚙ in the nav bar. You can add your own AI API keys (Gemini, OpenAI, etc.) or connect LM Studio for 100% local AI that runs on your machine with zero data leaving your device.";
+      return "Go to Settings ⚙ in the nav bar. You can add your own AI API keys (Gemini, OpenAI, etc.) or enable LM Studio for 100% local AI that runs on your machine.";
     if (/image|detector|ai image|fake/.test(lower))
-      return "The AI Image Detector (nav bar) runs 5 forensic engines entirely in your browser: C2PA metadata, EXIF tags, DCT frequency/watermark analysis, 8 visual heuristics, and deep learning classification. No image ever leaves your device.";
+      return "The AI Image Detector runs 5 forensic engines entirely in your browser: C2PA, EXIF, SynthID, 8 visual heuristics, and ONNX ML. No image ever leaves your device.";
     if (/compare|history|past/.test(lower))
-      return "Go to History 📊 in the nav (after signing in). Past scans auto-save to your browser. You can compare any two scans side-by-side to see if your security score improved over time.";
+      return "Go to History 📊 in the nav (after signing in). Past scans auto-save. You can compare any two scans side-by-side to see improvements over time.";
     if (/what are you|who are you|your name/.test(lower))
-      return "I'm Reversiy 🛰️ — SiteAudit's resident AI agent. I live on every page, watching your scans, explaining findings in plain English, and turning them into fixes. Powered by a chain of AI providers: LM Studio (your machine) → Gemini → xAI → Pollinations (guaranteed fallback).";
-    return "I can help with: reading scan findings & scores, VibeCheck explanations, ownership verification, fix guides, how SiteAudit works, and general web security. Open a scan and ask me 'what should I fix first?' 🤖";
+      return "I'm Reversiy 🛰️ — SiteAudit's AI agent. I live on every page, watching your scans, explaining findings, and turning them into fixes. Powered by LM Studio (your machine) → Gemini → xAI → Pollinations.";
+    return "I can help with: scan findings & scores, VibeCheck explanations, verification, fix guides, and general web security. Open a scan and ask 'what should I fix first?' 🤖";
   }
 
   function greet() {
+    if (busyRef.current) return;
+    busyRef.current = true;
+    greetedRef.current = true;
     setGreeted(true);
     setBusy(true);
-    const doGreet = async () => {
-      // Try LM Studio direct first
+
+    (async () => {
       const lm = getLmSettings();
       if (lm) {
         try {
           const reply = await callLmStudioDirect("Hi! Introduce yourself super briefly and tell me the best thing to do first on this page.");
-          if (reply) { setMsgs([{ role: "assistant", content: reply, ts: Date.now() }]); setProvider("lmstudio"); setBusy(false); return; }
-        } catch (err) { console.log("[Reversiy] LM Studio greet failed:", err.message); }
+          if (reply) { msgsRef.current = [{ role: "assistant", content: reply, ts: Date.now() }]; setMsgs(msgsRef.current); setProvider("lmstudio"); busyRef.current = false; setBusy(false); return; }
+        } catch (err) { console.log("[Reversiy] LM greet failed:", err.message); }
       }
       try {
         const r = await api.agent("Hi! Introduce yourself super briefly and tell me the best thing to do first on this page.", agentContext.scanId, []);
-        setMsgs([{ role: "assistant", content: r.reply, ts: Date.now() }]);
+        msgsRef.current = [{ role: "assistant", content: r.reply, ts: Date.now() }];
+        setMsgs(msgsRef.current);
         setProvider(r.provider || "");
       } catch {
-        setMsgs([{ role: "assistant", content: "Hey! 👋 I'm Reversiy — your security sidekick on every page. Paste a URL on the home page and hit RUN SCAN to get started! Ask me anything about security, findings, or how SiteAudit works.", ts: Date.now() }]);
+        msgsRef.current = [{ role: "assistant", content: "Hey! 👋 I'm Reversiy — your security sidekick. Paste a URL and hit RUN SCAN to get started! Ask me anything.", ts: Date.now() }];
+        setMsgs(msgsRef.current);
         setProvider("local-fallback");
       } finally {
+        busyRef.current = false;
         setBusy(false);
       }
-    };
-    doGreet();
+    })();
   }
 
   function toggle() {
     setOpen((o) => {
       const next = !o;
-      if (next && !greeted && msgs.length === 0) {
+      if (next && !greetedRef.current && msgsRef.current.length === 0) {
         greet();
       }
       return next;
@@ -231,14 +239,12 @@ export default function Reversiy() {
   }
 
   function clearChat() {
+    msgsRef.current = [];
     setMsgs([]);
+    greetedRef.current = false;
     setGreeted(false);
     setProvider("");
     localStorage.removeItem(STORAGE_KEY);
-  }
-
-  function copyMessage(content) {
-    navigator.clipboard?.writeText(content).catch(() => {});
   }
 
   const chips = agentContext.scanId ? SCAN_CHIPS : HOME_CHIPS;
@@ -258,7 +264,7 @@ export default function Reversiy() {
             <div className="rp-title">
               <div className="rp-name">REVERSIY <span className="dot" /></div>
               <div className="rp-sub">
-                {busy ? "thinking..." : provider ? <>answered via <ProviderBadge provider={provider} /></> : <>AI security agent · online{lmConnected && <span style={{ color: "#a855f7", marginLeft: 8, fontSize: 10 }}>🧠 local</span>}</>}
+                {busy ? "thinking..." : provider ? <>via <ProviderBadge provider={provider} /></> : <>AI agent · online{lmConnected && <span style={{ color: "#a855f7", marginLeft: 8, fontSize: 10 }}>🧠 local</span>}</>}
               </div>
             </div>
             <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
@@ -286,7 +292,7 @@ export default function Reversiy() {
                   <div className="rp-bubble">{m.content}</div>
                   {m.role === "assistant" && (
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 3 }}>
-                      <span style={{ fontSize: 9, color: "var(--dim)", cursor: "pointer" }} onClick={() => copyMessage(m.content)}>
+                      <span style={{ fontSize: 9, color: "var(--dim)", cursor: "pointer" }} onClick={() => navigator.clipboard?.writeText(m.content).catch(() => {})}>
                         📋 copy
                       </span>
                     </div>
@@ -310,7 +316,6 @@ export default function Reversiy() {
 
           <div className="rp-input">
             <input
-              ref={inputRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={onKey}
