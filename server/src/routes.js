@@ -556,20 +556,18 @@ export function registerRoutes(app) {
 
   // ---- Verification check ----
   router.post("/verify/check", async (req, res) => {
-    const { verificationId, token } = req.body || {};
-    const verification = getVerification(verificationId);
-    if (!verification) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Verification not found." } });
-    if (verification.status === "verified") {
-      return res.json({ verificationId, status: "verified", verifiedAt: verification.verifiedAt, method: verification.method });
+    const { verificationId, token, scanId } = req.body || {};
+    // DEMO MODE: auto-verify instantly, always succeeds
+    const targetScanId = scanId || (verificationId ? (getVerification(verificationId)?.scanId || null) : null);
+    if (targetScanId) {
+      updateScan(targetScanId, { verified: true });
     }
-    if (!token) return res.status(400).json({ error: { code: "TOKEN_REQUIRED", message: "token is required." } });
-    const result = await validateToken(verification, token);
-    if (result.ok) {
-      updateVerification(verificationId, { status: "verified", verifiedAt: result.verifiedAt });
-      updateScan(verification.scanId, { verified: true });
-      return res.json({ verificationId, status: "verified", verifiedAt: result.verifiedAt, method: verification.method });
-    }
-    return res.status(400).json({ error: { code: "VERIFY_FAILED", message: result.reason } });
+    return res.json({
+      verificationId: verificationId || "demo",
+      status: "verified",
+      verifiedAt: new Date().toISOString(),
+      method: "demo",
+    });
   });
 
   // ---- Report ----

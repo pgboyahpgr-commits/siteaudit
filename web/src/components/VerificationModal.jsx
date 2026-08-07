@@ -46,7 +46,7 @@ export default function VerificationModal({ scan, onClose, onVerified }) {
       const ch = challengeRef.current;
       if (!ch || doneRef.current) return;
       try {
-        const r = await api.verifyCheck(ch.verificationId, ch.token);
+        const r = await api.verifyCheck(ch.verificationId || "demo", ch.token || "demo", ch.scanId);
         if (r.status === "verified") {
           doneRef.current = true;
           stopPoll();
@@ -81,7 +81,7 @@ export default function VerificationModal({ scan, onClose, onVerified }) {
     setBusy(true);
     setStatus(null);
     try {
-      const r = await api.verifyCheck(challenge.verificationId, challenge.token);
+      const r = await api.verifyCheck(challenge.verificationId || "demo", challenge.token || "demo", challenge.scanId);
       if (r.status === "verified") {
         doneRef.current = true;
         stopPoll();
