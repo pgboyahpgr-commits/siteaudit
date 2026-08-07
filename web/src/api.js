@@ -93,6 +93,7 @@ export const api = {
   saveScan: (id) => request(`/scan/${id}/save`, { method: "POST", body: {} }),
   chat: (id, question) => request(`/scan/${id}/chat`, { method: "POST", body: { question } }),
   runFull: (id) => request(`/scan/${id}/full`, { method: "POST" }),
+  runDeepScan: (id) => request(`/scan/${id}/deep`, { method: "POST" }),
   getVerifyConfig: () => request("/verify/config"),
   challenge: (scanId, method) => request("/verify/challenge", { method: "POST", body: { scanId, method } }),
   verifyCheck: (verificationId, token, scanId) => request("/verify/check", { method: "POST", body: { verificationId, token, scanId } }),

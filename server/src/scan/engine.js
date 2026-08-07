@@ -1020,7 +1020,27 @@ export async function runScan(scan, onProgress = () => {}) {
       meta.hostInfo = null;
     }
 
-    // ── Phase: DNS Deep Dive (SPF/DKIM/DMARC/CAA + full records) ──
+    const score = computeScore(findings);
+    return { findings, score, meta };
+  }
+
+  return await finish();
+}
+
+export async function runDeepScan(scanId, getScanFn, updateScanFn, setScanFindingsFn) {
+  const scan = getScanFn(scanId);
+  if (!scan) throw new Error("Scan not found");
+  if (scan.status !== "completed") throw new Error("Basic scan must complete first");
+
+  const targetUrl = scan.targetUrl;
+  const host = new URL(targetUrl).hostname;
+  const meta = scan.meta || {};
+  const findings = [...(scan.findings || [])];
+  const home = meta.pageData?.[0] || {};
+  const sources = (meta.pageData || []).map(p => ({ content: p.html || "", url: p.url, kind: "html" })).filter(s => s.content.length);
+  const allPages = meta.pageData || [];
+
+  // ── DNS Deep Dive ──
     try {
       const dnsDeep = await checkDnsDeep(host);
       meta.dnsDeep = dnsDeep;
@@ -1044,7 +1064,7 @@ export async function runScan(scan, onProgress = () => {}) {
 
     // ── Phase: JS Supply Chain Audit ──
     try {
-      meta.supplyChain = await auditJsSupplyChain(meta.jsFiles || [], crawlResult.pages || []);
+      meta.supplyChain = await auditJsSupplyChain(meta.jsFiles || [], allPages);
       const vulnLibs = meta.supplyChain.filter(s => s.cves.length > 0);
       for (const lib of vulnLibs) {
         for (const cve of lib.cves) {
@@ -1079,8 +1099,8 @@ export async function runScan(scan, onProgress = () => {}) {
 
     // ── Phase: WAF Fingerprinting ──
     try {
-      const homeHeaders = home.headers ? Object.fromEntries(Object.entries(home.headers)) : {};
-      meta.waf = fingerprintWaf(homeHeaders, meta.cookies || [], home.html || "");
+      const homeHeaders = (home && home.headers) || {};
+      meta.waf = fingerprintWaf(homeHeaders, meta.cookies || [], home ? (home.html || "") : "");
       if (meta.waf.length) {
         const wafFix = generateWafFix(meta.waf);
         findings.push(finding({ severity: "info", category: "info", title: `WAF detected: ${meta.waf.map(w => `${w.name} (${w.confidence})`).join(", ")}`, url: targetUrl, evidence: JSON.stringify(meta.waf), description: wafFix ? wafFix.recommendations.join(". ") : "WAF presence detected. Verify rules are actively blocking attacks.", phase: "waf", tool: "fingerprint" }));
@@ -1124,7 +1144,7 @@ export async function runScan(scan, onProgress = () => {}) {
 
     // ── CORS Exploit Impact ──
     try {
-      const homeHeaders = home.headers ? Object.fromEntries(Object.entries(home.headers)) : {};
+      const homeHeaders = (home && home.headers) || {};
       meta.corsImpact = await checkCorsExploitImpact(homeHeaders, targetUrl);
       if (meta.corsImpact && meta.corsImpact.severity === "critical") {
         findings.push(finding({ severity: "critical", category: "misconfig", title: "Critical CORS misconfiguration — authenticated requests exposed", url: targetUrl, evidence: `ACAO: ${meta.corsImpact.origin} · Credentials: ${meta.corsImpact.credentials}`, description: meta.corsImpact.exploitScenario.join(". ") + `. CWE: ${meta.corsImpact.cwe}.`, phase: "headers", tool: "cors-impact" }));
@@ -1141,9 +1161,7 @@ export async function runScan(scan, onProgress = () => {}) {
       }
     } catch { meta.rateLimit = null; }
 
-    const score = computeScore(findings);
-    return { findings, score, meta };
-  }
-
-  return await finish();
+  const score = computeScore(findings);
+  updateScanFn(scanId, { meta, findings, score, status: "completed" });
+  return { findings, score, meta };
 }

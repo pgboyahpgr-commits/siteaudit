@@ -12,6 +12,7 @@ import {
   genToken,
   getReport,
   updateScan,
+  setScanFindings,
 } from "./store.js";
 import { enqueue } from "./queue.js";
 import { validateToken, emailConfigured } from "./scan/verify.js";
@@ -422,6 +423,25 @@ export function registerRoutes(app) {
       res.json({ reply, provider });
     } catch (err) {
       res.status(502).json({ error: { code: "AI_ERROR", message: err.message } });
+    }
+  });
+
+  // ---- Deep scan (advanced engines on demand) ----
+  router.post("/scan/:id/deep", async (req, res) => {
+    const scanId = req.params.id;
+    const scan = getScan(scanId);
+    if (!scan) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Scan not found." } });
+    if (scan.status !== "completed") return res.status(409).json({ error: { code: "NOT_READY", message: "Basic scan must complete first." } });
+    if (scan.meta?.deepDone) return res.json({ scan: publicScan(scan), cached: true });
+
+    try {
+      const { runDeepScan } = await import("./scan/engine.js");
+      const result = await runDeepScan(scanId, getScan, updateScan, setScanFindings);
+      updateScan(scanId, { meta: { ...scan.meta, ...result.meta, deepDone: true } });
+      const updated = getScan(scanId) || scan;
+      return res.json({ scan: publicScan({ ...updated, meta: { ...updated.meta, ...result.meta, deepDone: true }, findings: result.findings, score: result.score }) });
+    } catch (err) {
+      return res.status(500).json({ error: { code: "DEEP_ERROR", message: err.message } });
     }
   });
 

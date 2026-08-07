@@ -43,6 +43,8 @@ export default function ScanPage() {
   const [expanded, setExpanded] = useState({});
   const [showVerify, setShowVerify] = useState(false);
   const [fullBusy, setFullBusy] = useState(false);
+  const [deepBusy, setDeepBusy] = useState(false);
+  const [deepDone, setDeepDone] = useState(false);
   const [fullError, setFullError] = useState("");
   const [shareMsg, setShareMsg] = useState("");
   const [saved, setSaved] = useState(false);
@@ -117,13 +119,13 @@ export default function ScanPage() {
         }
       } catch (err) {
         if (stop) return;
-        if (retries < 8) {
+        if (retries < 10) {
           retries++;
           timer = setTimeout(load, Math.min(3000 * retries, 15000));
         } else {
-          setError("Server is waking up. Your scan will appear shortly — refreshing...");
-          timer = setTimeout(load, 5000);
+          setError("Server is waking up from sleep. Please wait or refresh.");
           retries = 0;
+          timer = setTimeout(load, 6000);
         }
       }
     };
@@ -233,6 +235,22 @@ export default function ScanPage() {
     } catch (err) {
       setFullError(err.message);
       setFullBusy(false);
+    }
+  }
+
+  async function runDeep() {
+    setFullError("");
+    setDeepBusy(true);
+    try {
+      const r = await api.runDeepScan(id);
+      if (r.scan) {
+        setScan(r.scan);
+        setDeepDone(true);
+      }
+    } catch (err) {
+      setFullError(err.message);
+    } finally {
+      setDeepBusy(false);
     }
   }
 
@@ -599,10 +617,16 @@ export default function ScanPage() {
                   📤 SHARE RESULT
                 </button>
                 {scan.mode !== "full" && (
-                  <button className="btn btn-magenta btn-sm" onClick={runFull} disabled={busy}>
-                    {busy ? "RUNNING..." : "🚀 RUN FULL CHECK"}
+                  <button className="btn btn-magenta btn-sm" onClick={runFull} disabled={fullBusy}>
+                    {fullBusy ? "RUNNING..." : "🚀 RUN FULL CHECK"}
                   </button>
                 )}
+                {!deepDone && !(scan.meta?.deepDone) && (
+                  <button className="btn btn-ghost btn-sm" onClick={runDeep} disabled={deepBusy}>
+                    {deepBusy ? "SCANNING..." : "🔬 DEEP SCAN"}
+                  </button>
+                )}
+                {deepDone && <span className="small dim" style={{ color: "#33ffa1" }}>Deep scan complete</span>}
               </div>
               {fullError && <div className="error-box">{fullError}</div>}
               {shareMsg && <div className="mt" style={{ border: "1px solid var(--green)", color: "var(--green)", padding: "11px 13px", fontSize: 13 }}>{shareMsg}</div>}
