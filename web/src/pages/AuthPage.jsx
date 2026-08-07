@@ -88,7 +88,7 @@ export default function AuthPage({ onAuthed }) {
                 color: "var(--dim, #8fa2bf)",
                 lineHeight: 1.5,
               }}>
-                <strong style={{ color: "#7dfcff" }}>How it works:</strong> Your browser's IP + your username create a unique device fingerprint. It's stored encrypted in a GitHub Gist. Come back from the same device — you're auto-recognized. No passwords, no email.
+                <strong style={{ color: "#7dfcff" }}>How it works:</strong> Pick a username — it's locked to your device. One IP = one identity. Come back from the same device and you're auto-recognized. No passwords, no email. Stored secure in a GitHub Gist.
               </div>
 
               {vibeResult && (
