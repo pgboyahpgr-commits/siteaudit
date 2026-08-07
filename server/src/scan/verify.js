@@ -3,6 +3,9 @@ import { hashToken } from "../store.js";
 
 const DEOH_URL = "https://cloudflare-dns.com/dns-query";
 
+// Browser-like user agent to avoid bot blocking
+const BROWSER_UA = "Mozilla/5.0 (compatible; SiteAuditVerifier/1.0; +https://siteaudit-six.vercel.app)";
+
 async function queryDns(host, type) {
   const name = `_siteaudit.${host}`;
   const res = await fetch(`${DEOH_URL}?name=${encodeURIComponent(name)}&type=${type}`, {
@@ -49,6 +52,20 @@ export async function sendVerificationEmail(host, code, confirmUrl) {
   return addr;
 }
 
+function isSpaIndex(body) {
+  if (!body) return false;
+  const lower = body.toLowerCase().slice(0, 500);
+  return /^<!doctype|<html|<head|<title|<script|<link|<meta charset/i.test(lower) && (
+    body.includes("id=\"root\"") ||
+    body.includes("id='root'") ||
+    body.includes("data-reactroot") ||
+    body.includes("__NEXT_DATA__") ||
+    body.includes("vue") ||
+    body.includes("_next") ||
+    body.includes("/static/js/")
+  );
+}
+
 export async function validateToken(verification, token) {
   if (hashToken(token) !== verification.tokenHash) return { ok: false, reason: "Token mismatch" };
   if (new Date(verification.expiresAt) < new Date()) {
@@ -62,49 +79,60 @@ export async function validateToken(verification, token) {
   try {
     switch (verification.method) {
       case "file": {
-        const paths = ["/.well-known/siteaudit-verify.txt", "/siteaudit-verify.txt", "/verify.txt"];
+        const paths = [
+          { path: "/.well-known/siteaudit-verify.txt", label: "/.well-known/siteaudit-verify.txt" },
+          { path: "/siteaudit-verify.txt", label: "/siteaudit-verify.txt" },
+          { path: "/verify.txt", label: "/verify.txt" },
+        ];
         let body = "";
         let tried = "";
+        let triedLabel = "";
         for (const p of paths) {
-          tried = `${origin}${p}`;
-          const res = await httpGet(tried, { timeout: 12000 });
-          if (res.ok) {
+          tried = `${origin}${p.path}`;
+          triedLabel = p.label;
+          const res = await httpGet(tried, { timeout: 12000, headers: { "user-agent": BROWSER_UA } });
+          if (res.ok && res.status !== 404) {
             body = (res.text || "").trim();
+            // If the site returns its HTML (SPA catch-all), the token file isn't actually there
+            if (body !== token && isSpaIndex(body)) continue;
             break;
           }
         }
         if (body === token) return ok(verification);
-        const looksLikeHtml = /^<!doctype|^<html|<script|<head/i.test(body);
-        if (looksLikeHtml) {
+        if (isSpaIndex(body)) {
           return {
             ok: false,
-            reason: `Your site is serving its app page (index.html) at ${tried} — the token file isn't being served. Add the file to your project's public/ or static folder and redeploy (on Vercel it must be inside public/), or use the Meta Tag method instead.`,
+            reason: `SPA detected — your site serves index.html for all URLs including ${triedLabel}. SPA hosts (Vercel, Netlify, Cloudflare Pages) need the token file in public/ or static/ folder. Upload "siteaudit-verify.txt" with content ${token} to your project's public/ folder and redeploy. Or use the META TAG method instead.`,
           };
         }
-        return { ok: false, reason: `Token file not found. We checked ${tried} (got "${body.slice(0, 40) || "empty"}"). Make sure the file contains exactly: ${token}` };
+        return { ok: false, reason: `Token file not found at ${triedLabel}. We got "${body.slice(0, 40) || "empty message"}". Upload a file with content "${token}" at ${triedLabel}.` };
       }
       case "meta": {
-        const res = await httpGet(`${origin}/`, { timeout: 12000 });
+        const res = await httpGet(`${origin}/`, { timeout: 12000, headers: { "user-agent": BROWSER_UA } });
         const re = new RegExp(`<meta[^>]+name=["']siteaudit-verification["'][^>]+content=["']${token}["']`, "i");
         if (re.test(res.text || "")) return ok(verification);
-        return { ok: false, reason: "Meta tag not found. Add <meta name=\"siteaudit-verification\" content=\"" + token + "\"> to the homepage <head> and redeploy." };
+        const hasHead = /<head[^>]*>/i.test(res.text || "");
+        if (!hasHead) {
+          return { ok: false, reason: "Could not find a <head> tag on the homepage. Are you sure this is a real site? If it's an SPA, the meta tag must be in the source HTML (not added by JavaScript)." };
+        }
+        return { ok: false, reason: "Meta tag not found. Add <meta name=\"siteaudit-verification\" content=\"" + token + "\"> inside the <head> of your homepage and redeploy." };
       }
       case "header": {
-        const res = await httpGet(`${origin}/`, { timeout: 12000 });
+        const res = await httpGet(`${origin}/`, { timeout: 12000, headers: { "user-agent": BROWSER_UA } });
         const val = res.headers?.get?.("x-siteaudit-token") || res.headers?.["x-siteaudit-token"];
         if (val && String(val).trim() === token) return ok(verification);
-        return { ok: false, reason: "Header not found. Add X-SiteAudit-Token: " + token + " via vercel.json / netlify.toml and redeploy." };
+        return { ok: false, reason: "Header not found. Set X-SiteAudit-Token: " + token + " in vercel.json headers, netlify.toml, or your server config and redeploy." };
       }
       case "dns": {
         const records = await queryDns(host, "TXT");
         if (records.some((r) => r === `siteaudit-verify=${token}`)) return ok(verification);
-        return { ok: false, reason: "TXT record not found. Add TXT _siteaudit." + host + " with value siteaudit-verify=" + token + " and wait for propagation." };
+        return { ok: false, reason: "TXT record not found. Add TXT _siteaudit." + host + " with value siteaudit-verify=" + token + " at your DNS provider. Wait 2-5 minutes for propagation, then try again." };
       }
       case "cname": {
         const records = await queryDns(host, "CNAME");
         const expected = `siteaudit-verify-${token.toLowerCase()}.verify.sa.`;
         if (records.some((r) => String(r).toLowerCase() === expected)) return ok(verification);
-        return { ok: false, reason: "CNAME record not found. Add CNAME _siteaudit." + host + " -> " + expected + " and wait for propagation." };
+        return { ok: false, reason: "CNAME record not found. Add CNAME _siteaudit." + host + " -> " + expected + " at your DNS provider. Wait 2-5 minutes for propagation, then try again." };
       }
       case "email": {
         return ok(verification);

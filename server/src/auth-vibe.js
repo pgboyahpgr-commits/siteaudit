@@ -14,6 +14,10 @@ const GIST_TOKEN = process.env.GITHUB_GIST_TOKEN;
 const GIST_DESC = "SiteAudit VibeAuth — device-linked identities";
 const GIST_FILENAME = "vibe_users.json";
 
+// In-memory cache to avoid GitHub Gist eventual-consistency lag
+let cachedData = null;
+let cacheGistId = null;
+
 function hash(str) {
   return createHash("sha256").update(str).digest("hex");
 }
@@ -85,6 +89,9 @@ async function readGist(gistId) {
 }
 
 async function updateGist(gistId, content) {
+  // Update in-memory cache immediately (before the API call)
+  cachedData = content;
+  cacheGistId = gistId;
   const res = await fetch(`https://api.github.com/gists/${gistId}`, {
     method: "PATCH",
     headers: {
@@ -103,7 +110,12 @@ async function updateGist(gistId, content) {
 }
 
 async function ensureGist() {
+  // Use cached data if available and IDs match
   let gistId = getStoredGistId();
+  if (cachedData && cacheGistId === gistId) {
+    return { data: JSON.parse(JSON.stringify(cachedData)), gistId };
+  }
+
   let data;
   if (gistId) {
     data = await readGist(gistId);
@@ -118,7 +130,9 @@ async function ensureGist() {
     saveGistId(gistId);
   }
   data.users = data.users || {};
-  return { data, gistId };
+  cachedData = data;
+  cacheGistId = gistId;
+  return { data: JSON.parse(JSON.stringify(data)), gistId };
 }
 
 function makeToken(user, username, vibeExtra) {
@@ -156,41 +170,40 @@ export async function vibeAuth(username, password, ip) {
   // ── Existing account ──
   if (account) {
     const knownIps = account.knownIps || [];
+    const isKnownDevice = knownIps.includes(ipKey);
 
-    // Same device → instant login
-    if (knownIps.includes(ipKey)) {
+    // Password provided → always verify
+    if (password) {
+      const pwHash = passwordHash(password);
+      if (account.passwordHash && account.passwordHash !== pwHash) {
+        const err = new Error("Wrong password.");
+        err.statusCode = 401;
+        throw err;
+      }
+      // Password correct → login, add to known IPs if new
+      account.knownIps = account.knownIps || [];
+      if (!account.knownIps.includes(ipKey)) {
+        account.knownIps.push(ipKey);
+      }
       account.lastLogin = new Date().toISOString();
       try { await updateGist(gistId, data); } catch {}
+      const user = await ensureDbUser(email, pwHash);
+      return makeToken(user, username, { status: "welcome_back", sameDevice: isKnownDevice });
+    }
 
+    // No password + known device → instant login
+    if (isKnownDevice) {
+      account.lastLogin = new Date().toISOString();
+      try { await updateGist(gistId, data); } catch {}
       const user = await ensureDbUser(email, account.passwordHash || "local");
       return makeToken(user, username, { status: "welcome_back", sameDevice: true });
     }
 
-    // Different device → need password
-    if (!password) {
-      const err = new Error("PASSWORD_REQUIRED");
-      err.statusCode = 401;
-      err.code = "PASSWORD_REQUIRED";
-      throw err;
-    }
-
-    const pwHash = passwordHash(password);
-    if (account.passwordHash && account.passwordHash !== pwHash) {
-      const err = new Error("Wrong password.");
-      err.statusCode = 401;
-      throw err;
-    }
-
-    // Password correct — add this device to known IPs
-    account.knownIps = account.knownIps || [];
-    if (!account.knownIps.includes(ipKey)) {
-      account.knownIps.push(ipKey);
-    }
-    account.lastLogin = new Date().toISOString();
-    try { await updateGist(gistId, data); } catch {}
-
-    const user = await ensureDbUser(email, pwHash);
-    return makeToken(user, username, { status: "welcome_back", sameDevice: false });
+    // No password + unknown device → require password
+    const err = new Error("PASSWORD_REQUIRED");
+    err.statusCode = 401;
+    err.code = "PASSWORD_REQUIRED";
+    throw err;
   }
 
   // ── New account → REGISTER ──
