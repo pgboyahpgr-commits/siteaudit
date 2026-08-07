@@ -64,7 +64,19 @@ export function createScan(data) {
 }
 
 export function getScan(id) {
-  return readJson(join(SCANS_DIR, `${id}.json`));
+  const fromFile = readJson(join(SCANS_DIR, `${id}.json`));
+  return fromFile;
+}
+
+export async function getScanRobust(id) {
+  const fromFile = readJson(join(SCANS_DIR, `${id}.json`));
+  if (fromFile) return fromFile;
+  try {
+    const { getScanData } = await import("./db.js");
+    const fromDb = await getScanData(id);
+    if (fromDb) return fromDb;
+  } catch {}
+  return null;
 }
 
 export function updateScan(id, patch) {

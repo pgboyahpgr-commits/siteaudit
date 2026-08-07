@@ -117,11 +117,13 @@ export default function ScanPage() {
         }
       } catch (err) {
         if (stop) return;
-        if (retries < 3) {
+        if (retries < 8) {
           retries++;
-          timer = setTimeout(load, 2000 * retries);
+          timer = setTimeout(load, Math.min(3000 * retries, 15000));
         } else {
-          setError(err.message);
+          setError("Server is waking up. Your scan will appear shortly — refreshing...");
+          timer = setTimeout(load, 5000);
+          retries = 0;
         }
       }
     };

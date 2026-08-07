@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import {
   getScan,
+  getScanRobust,
   createScan,
   listScans,
   logConsent,
@@ -282,13 +283,7 @@ export function registerRoutes(app) {
 
   // ---- Scan status ----
   router.get("/scan/:id", async (req, res) => {
-    let scan = getScan(req.params.id);
-    if (!scan) {
-      try {
-        const { getScanData } = await import("./db.js");
-        scan = await getScanData(req.params.id);
-      } catch { /* DB not available */ }
-    }
+    let scan = await getScanRobust(req.params.id);
     if (!scan) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Scan not found." } });
     return res.json(publicScan(scan));
   });
