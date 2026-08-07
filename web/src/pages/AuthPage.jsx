@@ -14,6 +14,7 @@ export default function AuthPage({ onAuthed }) {
   const [vibeResult, setVibeResult] = useState(null);
   const [needsPassword, setNeedsPassword] = useState(false);
   const [passwordShown, setPasswordShown] = useState(false);
+  const [isRegistering, setIsRegistering] = useState(false);
 
   async function submitEmail(e) {
     e.preventDefault();
@@ -37,14 +38,16 @@ export default function AuthPage({ onAuthed }) {
     setVibeResult(null);
     setBusy(true);
 
+    const pw = passwordShown && password ? password : undefined;
     try {
-      const pw = passwordShown ? password : undefined;
       const r = await api.vibeLogin(username, pw);
       setToken(r.token);
       setVibeResult(r.vibe);
       setNeedsPassword(false);
       setPasswordShown(false);
+      setIsRegistering(false);
       setPassword("");
+      setConfirmPassword("");
       onAuthed?.();
       setTimeout(() => navigate("/my"), 1000);
     } catch (err) {
@@ -61,12 +64,20 @@ export default function AuthPage({ onAuthed }) {
     }
   }
 
+  function startRegister() {
+    setIsRegistering(true);
+    setPasswordShown(true);
+    setNeedsPassword(false);
+    setError("");
+  }
+
   function resetVibe() {
     setUsername("");
     setPassword("");
     setConfirmPassword("");
     setNeedsPassword(false);
     setPasswordShown(false);
+    setIsRegistering(false);
     setError("");
     setVibeResult(null);
   }
@@ -77,7 +88,7 @@ export default function AuthPage({ onAuthed }) {
         <h2>{mode === "vibe" ? "VIBE ID" : mode === "login" ? "SIGN IN" : "CREATE ACCOUNT"}</h2>
         <span className="small dim">
           {mode === "vibe"
-            ? "One username, one device. Set a password once — use it anywhere."
+            ? "Pick a username. Same device = instant login. New device = enter password."
             : "Save your scan history, compare past results, and access reports anytime."}
         </span>
       </div>
@@ -113,22 +124,19 @@ export default function AuthPage({ onAuthed }) {
                 color: "var(--dim, #8fa2bf)",
                 lineHeight: 1.5,
               }}>
-                <strong style={{ color: "#7dfcff" }}>How it works:</strong> Username is tied to your device. Same device = instant login. Different device = enter your password. No email needed. Stored in a GitHub Gist.
+                <strong style={{ color: "#7dfcff" }}>Smart login:</strong> Returning from the same device? Just type your username — no password needed. New device or switching accounts? Enter your password to verify. Stored in a GitHub Gist.
               </div>
 
               {vibeResult && (
                 <div className="console" style={{ marginBottom: 18, borderColor: "#33ffa1", borderLeft: "3px solid #33ffa1" }}>
                   <div className="console-body">
                     <div style={{ fontSize: 13, color: "#33ffa1", marginBottom: 8 }}>
-                      {vibeResult.status === "registered" ? "Registered!" : "Welcome back!"}
+                      {vibeResult.status === "registered" ? "Account created!" : "Welcome back!"}
                     </div>
                     <div className="small dim">
                       Logged in as <strong style={{ color: "#7dfcff" }}>{vibeResult.username}</strong>
-                      {!vibeResult.sameDevice && (
-                        <span style={{ color: "#ffb020" }}> (different device)</span>
-                      )}
-                      <br />
-                      Redirecting...
+                      {vibeResult.sameDevice ? " (known device)" : " (new device, verified)"}
+                      <br />Redirecting...
                     </div>
                   </div>
                 </div>
@@ -138,9 +146,13 @@ export default function AuthPage({ onAuthed }) {
                 <div className="console" style={{ marginBottom: 18, borderColor: "#ffb020", borderLeft: "3px solid #ffb020" }}>
                   <div className="console-body">
                     <div style={{ fontSize: 13, color: "#ffb020", marginBottom: 6 }}>
-                      This account exists on another device.
+                      Verify your identity
                     </div>
-                    <div className="small dim">Enter your password to verify it's you.</div>
+                    <div className="small dim">
+                      {isRegistering
+                        ? "This username is not registered yet. Set a password to create it."
+                        : "This account is known but you're on a new device. Enter your password."}
+                    </div>
                   </div>
                 </div>
               )}
@@ -151,7 +163,7 @@ export default function AuthPage({ onAuthed }) {
                   className="url-input"
                   type="text"
                   value={username}
-                  onChange={(e) => { setUsername(e.target.value.replace(/[^a-zA-Z0-9_-]/g, "")); setNeedsPassword(false); setPasswordShown(false); setPassword(""); }}
+                  onChange={(e) => { setUsername(e.target.value.replace(/[^a-zA-Z0-9_-]/g, "")); setNeedsPassword(false); setPasswordShown(false); setIsRegistering(false); setPassword(""); }}
                   placeholder="e.g. cyberpanda"
                   spellCheck={false}
                   autoComplete="off"
@@ -162,16 +174,18 @@ export default function AuthPage({ onAuthed }) {
 
               {passwordShown && (
                 <div className="field">
-                  <div className="field-label"><span>{needsPassword ? "Your password" : "Set a password"}</span></div>
+                  <div className="field-label">
+                    <span>{isRegistering ? "Set a password" : needsPassword ? "Your password" : "Password"}</span>
+                  </div>
                   <input
                     className="url-input"
                     type="password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder={needsPassword ? "Used during registration" : "min 4 characters"}
+                    placeholder={isRegistering ? "min 4 characters" : "enter password"}
                     autoComplete="new-password"
                   />
-                  {!needsPassword && (
+                  {isRegistering && (
                     <>
                       <div className="field" style={{ marginTop: 8 }}>
                         <div className="field-label"><span>Confirm password</span></div>
@@ -185,7 +199,7 @@ export default function AuthPage({ onAuthed }) {
                         />
                       </div>
                       <div className="small dim" style={{ marginTop: 4 }}>
-                        This password lets you log in from other devices. Don't forget it.
+                        Remember this — you'll need it when logging in from other devices.
                       </div>
                     </>
                   )}
@@ -198,9 +212,9 @@ export default function AuthPage({ onAuthed }) {
                     type="button"
                     className="btn btn-ghost"
                     style={{ fontSize: 12, padding: "4px 10px" }}
-                    onClick={() => { setPasswordShown(true); setNeedsPassword(false); }}
+                    onClick={startRegister}
                   >
-                    + set password (new account)
+                    + create new account
                   </button>
                 </div>
               )}
@@ -208,17 +222,22 @@ export default function AuthPage({ onAuthed }) {
               <button
                 className="btn btn-primary"
                 type="submit"
-                disabled={busy || username.length < 2 || (passwordShown && (!password || password.length < 4)) || (passwordShown && !needsPassword && password !== confirmPassword)}
+                disabled={
+                  busy ||
+                  username.length < 2 ||
+                  (passwordShown && isRegistering && (!password || password.length < 4 || password !== confirmPassword)) ||
+                  (passwordShown && needsPassword && !password)
+                }
                 onClick={submitVibe}
                 style={{ width: "100%" }}
               >
                 {busy
                   ? "VERIFYING..."
-                  : passwordShown && !needsPassword
-                    ? "▸ REGISTER"
+                  : isRegistering
+                    ? "▸ CREATE ACCOUNT"
                     : needsPassword
                       ? "▸ VERIFY & LOGIN"
-                      : "▸ ENTER"}
+                      : "▸ LOGIN"}
               </button>
             </>
           ) : (

@@ -19,11 +19,11 @@ function hash(str) {
 }
 
 function ipHash(ip) {
-  return hash(`ip:${ip}|v5`).slice(0, 16);
+  return hash(`ip:${ip}|v6`).slice(0, 16);
 }
 
 function passwordHash(password) {
-  return hash(`pw:${password}|v5`).slice(0, 48);
+  return hash(`pw:${password}|v6`).slice(0, 48);
 }
 
 // ── Gist helpers ──
@@ -75,11 +75,12 @@ async function readGist(gistId) {
   }
   const data = await res.json();
   const raw = data.files?.[GIST_FILENAME]?.content;
-  if (!raw) return { users: {}, ips: {} };
+  if (!raw) return { users: {} };
   try {
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    return { users: parsed.users || parsed };
   } catch {
-    return { users: {}, ips: {} };
+    return { users: {} };
   }
 }
 
@@ -103,22 +104,21 @@ async function updateGist(gistId, content) {
 
 async function ensureGist() {
   let gistId = getStoredGistId();
-  let gist;
+  let data;
   if (gistId) {
-    gist = await readGist(gistId);
-    if (!gist) {
-      gist = { users: {}, ips: {} };
-      gistId = await createGist(gist);
+    data = await readGist(gistId);
+    if (!data) {
+      data = { users: {} };
+      gistId = await createGist(data);
       saveGistId(gistId);
     }
   } else {
-    gist = { users: {}, ips: {} };
-    gistId = await createGist(gist);
+    data = { users: {} };
+    gistId = await createGist(data);
     saveGistId(gistId);
   }
-  gist.ips = gist.ips || {};
-  gist.users = gist.users || {};
-  return { gist, gistId };
+  data.users = data.users || {};
+  return { data, gistId };
 }
 
 function makeToken(user, username, vibeExtra) {
@@ -128,6 +128,15 @@ function makeToken(user, username, vibeExtra) {
     token,
     vibe: { method: "vibe", username, ...vibeExtra },
   };
+}
+
+async function ensureDbUser(email, pwHash) {
+  let user = await findUserByEmail(email);
+  if (!user) {
+    user = { id: newId("us"), email, passwordHash: "vibe:" + pwHash };
+    await createUser(user);
+  }
+  return user;
 }
 
 // ── Public API ──
@@ -140,94 +149,76 @@ export async function vibeAuth(username, password, ip) {
   }
 
   const ipKey = ipHash(ip);
-  const { gist, gistId } = await ensureGist();
+  const { data, gistId } = await ensureGist();
   const email = `vibe:${username.toLowerCase().trim()}`;
-  const existingIpUser = gist.ips[ipKey];
-  const existingUser = gist.users[username];
+  const account = data.users[username];
 
-  // ── CASE 1: This IP already owns a different username ──
-  if (existingIpUser && existingIpUser !== username) {
-    const err = new Error(`This device is linked to "${existingIpUser}". Use that username instead.`);
-    err.statusCode = 403;
-    throw err;
-  }
+  // ── Existing account ──
+  if (account) {
+    const knownIps = account.knownIps || [];
 
-  // ── CASE 2: User exists, SAME IP → instant login (no password needed) ──
-  if (existingIpUser === username && existingUser) {
-    gist.users[username].lastLogin = new Date().toISOString();
-    try { await updateGist(gistId, gist); } catch {}
+    // Same device → instant login
+    if (knownIps.includes(ipKey)) {
+      account.lastLogin = new Date().toISOString();
+      try { await updateGist(gistId, data); } catch {}
 
-    let user = await findUserByEmail(email);
-    if (!user) {
-      user = { id: newId("us"), email, passwordHash: "vibe:local" };
-      await createUser(user);
+      const user = await ensureDbUser(email, account.passwordHash || "local");
+      return makeToken(user, username, { status: "welcome_back", sameDevice: true });
     }
-    return makeToken(user, username, { status: "welcome_back", sameDevice: true });
-  }
 
-  // ── CASE 3: User exists, DIFFERENT IP → need password ──
-  if (existingUser && !existingIpUser) {
+    // Different device → need password
     if (!password) {
       const err = new Error("PASSWORD_REQUIRED");
       err.statusCode = 401;
       err.code = "PASSWORD_REQUIRED";
       throw err;
     }
+
     const pwHash = passwordHash(password);
-    if (existingUser.passwordHash !== pwHash) {
+    if (account.passwordHash && account.passwordHash !== pwHash) {
       const err = new Error("Wrong password.");
       err.statusCode = 401;
       throw err;
     }
-    // Password correct — log in from new device
-    gist.users[username].lastLogin = new Date().toISOString();
-    try { await updateGist(gistId, gist); } catch {}
 
-    let user = await findUserByEmail(email);
-    if (!user) {
-      user = { id: newId("us"), email, passwordHash: "vibe:" + pwHash };
-      await createUser(user);
+    // Password correct — add this device to known IPs
+    account.knownIps = account.knownIps || [];
+    if (!account.knownIps.includes(ipKey)) {
+      account.knownIps.push(ipKey);
     }
+    account.lastLogin = new Date().toISOString();
+    try { await updateGist(gistId, data); } catch {}
+
+    const user = await ensureDbUser(email, pwHash);
     return makeToken(user, username, { status: "welcome_back", sameDevice: false });
   }
 
-  // ── CASE 4: New username → REGISTER (password required) ──
-  if (!existingUser) {
-    if (!password || password.length < 4) {
-      const err = new Error("Password is required to register (min 4 characters).");
-      err.statusCode = 400;
-      throw err;
-    }
-
-    const pwHash = passwordHash(password);
-    gist.ips[ipKey] = username;
-    gist.users[username] = {
-      passwordHash: pwHash,
-      createdAt: new Date().toISOString(),
-      lastLogin: new Date().toISOString(),
-    };
-
-    try {
-      await updateGist(gistId, gist);
-    } catch {
-      const e = new Error("Could not save your identity. Try again.");
-      e.statusCode = 503;
-      throw e;
-    }
-
-    let user = await findUserByEmail(email);
-    if (!user) {
-      user = { id: newId("us"), email, passwordHash: "vibe:" + pwHash };
-      await createUser(user);
-    }
-
-    return makeToken(user, username, { status: "registered", sameDevice: true });
+  // ── New account → REGISTER ──
+  if (!password || password.length < 4) {
+    const err = new Error("PASSWORD_REQUIRED");
+    err.statusCode = 401;
+    err.code = "PASSWORD_REQUIRED";
+    throw err;
   }
 
-  // Should never reach here
-  const err = new Error("Unexpected auth state. Try again.");
-  err.statusCode = 500;
-  throw err;
+  const pwHash = passwordHash(password);
+  data.users[username] = {
+    passwordHash: pwHash,
+    knownIps: [ipKey],
+    createdAt: new Date().toISOString(),
+    lastLogin: new Date().toISOString(),
+  };
+
+  try {
+    await updateGist(gistId, data);
+  } catch {
+    const e = new Error("Could not save your identity. Try again.");
+    e.statusCode = 503;
+    throw e;
+  }
+
+  const user = await ensureDbUser(email, pwHash);
+  return makeToken(user, username, { status: "registered", sameDevice: true });
 }
 
 export function vibeConfigured() {
