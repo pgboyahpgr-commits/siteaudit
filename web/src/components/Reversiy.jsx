@@ -105,7 +105,7 @@ export default function Reversiy() {
       method: "POST",
       headers: { "content-type": "application/json" },
       body,
-      signal: AbortSignal.timeout(45000),
+      signal: AbortSignal.timeout(20000),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();

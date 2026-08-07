@@ -227,8 +227,8 @@ export default function SettingsPage() {
       const reply = msg.content || msg.reasoning_content || "(empty response)";
       setLmChatMessages(p => [...p, { role: "assistant", content: reply, provider: "lmstudio" }]);
     } catch (err) {
-      const errMsg = err.name === "TimeoutError" ? "LM Studio timed out after 45s — model may be too large or still loading." : err.message;
-      setLmChatMessages(p => [...p, { role: "assistant", content: "LM Studio error: " + errMsg + ". Make sure LM Studio is running and the Server is started.", provider: "error" }]);
+      const errMsg = err.name === "TimeoutError" ? "Model loading timed out — try again, the model will already be in memory and respond instantly." : err.message;
+      setLmChatMessages(p => [...p, { role: "assistant", content: "LM Studio: " + errMsg, provider: "error" }]);
     } finally {
       setLmChatBusy(false);
     }
