@@ -223,40 +223,39 @@ export function registerRoutes(app) {
     }
   });
 
-  // ---- GitHub OAuth ----
-  router.post("/auth/github", async (req, res) => {
-    const code = String(req.body?.code || "");
-    if (!code) return res.status(400).json({ error: { code: "VALIDATION", message: "code required" } });
+  // ---- GitHub OAuth PKCE (no backend secret needed) ----
+  router.post("/auth/github/login", async (req, res) => {
     try {
-      // Exchange code for access token
-      const tokenRes = await fetch("https://github.com/login/oauth/access_token", {
-        method: "POST",
-        headers: { "content-type": "application/json", accept: "application/json" },
-        body: JSON.stringify({
-          client_id: "Ov23li7CPbU5TBC1oCzR",
-          client_secret: process.env.GITHUB_OAUTH_SECRET || process.env.GITHUB_OAUTH_CLIENT_SECRET || "",
-          code,
-        }),
-      });
-      const tokenData = await tokenRes.json();
-      if (tokenData.error) throw new Error(tokenData.error_description || tokenData.error);
-      const accessToken = tokenData.access_token;
-
-      // Get user info
-      const userRes = await fetch("https://api.github.com/user", {
-        headers: { authorization: `Bearer ${accessToken}`, "user-agent": "SiteAudit" },
-      });
-      const userData = await userRes.json();
-      const githubId = "gh_" + userData.id;
-      const userEmail = userData.email || `${userData.login}@github.user`;
-
-      // Find or create user
+      const { githubId, login, email, name } = req.body || {};
+      if (!githubId || !login) return res.status(400).json({ error: { code: "VALIDATION", message: "missing github user data" } });
+      const userEmail = email || `${login}@github.user`;
       let user = await findUserByEmail(userEmail);
       if (!user) {
         user = { id: newId("us"), email: userEmail, passwordHash: "github:" + githubId };
         await createUser(user);
       }
-      res.json({ user: { id: user.id, email: user.email || userEmail }, token: signToken(user.id) });
+      res.json({ user: { id: user.id, email: user.email }, token: signToken(user.id) });
+    } catch (err) {
+      res.status(401).json({ error: { code: "AUTH", message: err.message } });
+    }
+  });
+
+  // ---- Google OAuth ----
+  router.post("/auth/google/login", async (req, res) => {
+    try {
+      const { credential } = req.body || {};
+      if (!credential) return res.status(400).json({ error: { code: "VALIDATION", message: "missing google credential" } });
+      const verifyRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${credential}`);
+      const data = await verifyRes.json();
+      if (data.error) throw new Error(data.error_description || "invalid token");
+      const userEmail = data.email;
+      if (!userEmail) throw new Error("email not found in Google token");
+      let user = await findUserByEmail(userEmail);
+      if (!user) {
+        user = { id: newId("us"), email: userEmail, passwordHash: "google:" + (data.sub || "").slice(0, 30) };
+        await createUser(user);
+      }
+      res.json({ user: { id: user.id, email: user.email }, token: signToken(user.id) });
     } catch (err) {
       res.status(401).json({ error: { code: "AUTH", message: err.message } });
     }
