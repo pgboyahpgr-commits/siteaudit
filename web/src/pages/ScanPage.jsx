@@ -567,7 +567,7 @@ export default function ScanPage() {
 
               <ExposeOverlay scanId={scan.scanId} findings={findings} targetUrl={scan.targetUrl} />
 
-              <div className="btn-row mt">
+              <div className="btn-row mt" style={{ flexWrap: "wrap" }}>
                 <button className="btn btn-ghost btn-sm" onClick={() => downloadJSON(scan)}>
                   ⭳ JSON
                 </button>

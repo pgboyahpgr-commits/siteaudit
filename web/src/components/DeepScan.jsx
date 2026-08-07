@@ -221,7 +221,8 @@ function engineCSPMaster(meta) {
 // ENGINE 4 — Email Security (SPF/DKIM/DMARC)
 // ══════════════════════════════════════════════
 function engineEmailMaster(meta) {
-  const txt = (meta?.hostInfo?.txt || []).join(" ");
+  const hostInfo = meta?.hostInfo || {};
+  const txt = (hostInfo.txt || []).join(" ");
   const host = meta?.host || "example.com";
   const spf = /v=spf1/i.test(txt);
   const dkim = /dkim/i.test(txt);
@@ -449,20 +450,22 @@ function engineDOMComplexity(meta) {
 
   pages.forEach((p) => {
     const doc = parseHTML(p.html);
-    if (!doc) return;
+    if (!doc || !doc.documentElement) return;
     const all = doc.querySelectorAll("*");
     const count = all.length;
     totalElements += count;
     if (count > maxElements) maxElements = count;
 
     let depth = 0;
-    const walker = document.createTreeWalker(doc.documentElement, NodeFilter.SHOW_ELEMENT);
-    let node;
-    while ((node = walker.nextNode())) {
-      let d = 0, parent = node.parentElement;
-      while (parent) { d++; parent = parent.parentElement; }
-      if (d > depth) depth = d;
-    }
+    try {
+      const walker = document.createTreeWalker(doc.documentElement, NodeFilter.SHOW_ELEMENT);
+      let node;
+      while ((node = walker.nextNode())) {
+        let d = 0, parent = node.parentElement;
+        while (parent) { d++; parent = parent.parentElement; }
+        if (d > depth) depth = d;
+      }
+    } catch { depth = 0; }
     if (depth > maxDepth) maxDepth = depth;
     pageStats.push({ url: p.url, elements: count, depth });
   });

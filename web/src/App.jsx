@@ -110,7 +110,9 @@ export default function App() {
         </Routes>
 
         <footer className="footer">
-          <span>SITEAUDIT v0.3 // <span className="hl">AI-powered security, privacy &amp; trust</span></span>
+          <span style={{ fontWeight: 700, letterSpacing: 1 }}>
+            SITEAUDIT v2.0 // <span className="hl">AI-powered security, privacy &amp; trust</span>
+          </span>
           <span>
             <Link to="/terms" className="hl">Terms</Link> · <Link to="/privacy" className="hl">Privacy</Link>
           </span>

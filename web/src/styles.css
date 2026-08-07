@@ -1111,14 +1111,15 @@ select:focus {
 /* ---------- footer ---------- */
 .footer {
   margin-top: 70px;
-  border-top: 1px dashed var(--line);
-  padding-top: 20px;
+  border-top: 1px solid var(--line);
+  padding: 22px 0;
   display: flex;
   justify-content: space-between;
   gap: 14px;
   flex-wrap: wrap;
-  font-size: 12px;
-  color: var(--dim-2);
+  font-size: 13px;
+  color: var(--dim);
+  letter-spacing: 0.5px;
 }
 
 .footer .hl {
@@ -1310,13 +1311,18 @@ select:focus {
 }
 
 @media (max-width: 860px) {
-  .how-arrow {
-    transform: rotate(90deg);
-  }
+  .how-arrow { transform: rotate(90deg); }
+  .how-wrap { flex-direction: column; align-items: stretch; }
+  .how-arrow { display: none; }
   .nav-hamburger { display: block; }
   .nav-links { display: none; flex-direction: column; position: absolute; top: 56px; right: 10px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px; z-index: 100; box-shadow: 0 8px 24px rgba(0,0,0,0.4); min-width: 200px; }
   .nav-open .nav-links { display: flex; }
   .brand-sub { display: none; }
+  .compare-grid { grid-template-columns: 1fr; }
+  .compare-results-table { overflow-x: auto; }
+  .compare-results-table table { min-width: 600px; }
+  .modal { max-width: 95vw; }
+  .hi-row { grid-template-columns: 120px 1fr; }
 }
 
 /* ---------- utilities ---------- */
@@ -1393,18 +1399,71 @@ select:focus {
 
 /* ---------- responsive ---------- */
 @media (max-width: 720px) {
-  .row-options {
-    grid-template-columns: 1fr;
-  }
-  .score-wrap {
-    justify-content: center;
-  }
-  .hero-art {
-    font-size: 8px;
-  }
-  .finding-head {
-    flex-wrap: wrap;
-  }
+  .row-options { grid-template-columns: 1fr; }
+  .score-wrap { justify-content: center; flex-direction: column; }
+  .hero-art { font-size: 8px; }
+  .finding-head { flex-wrap: wrap; }
+  .app { padding: 0 14px 80px; }
+  .console-body { padding: 16px; }
+  .stat-grid { grid-template-columns: repeat(auto-fit, minmax(80px, 1fr)); }
+  .section-head { flex-direction: column; align-items: stretch; }
+  .filters { justify-content: flex-start; }
+  .btn-row { flex-direction: column; }
+  .btn-row .btn { width: 100%; }
+  .compare-results-table table { min-width: 480px; font-size: 11px; }
+  .hi-row { grid-template-columns: 1fr; }
+  .deepscan-accordion { font-size: 11px; }
+  .share-modal { width: 100%; max-width: 100%; margin: 0 8px; }
+  .modal { max-width: calc(100vw - 20px); max-height: 92vh; }
+}
+
+@media (max-width: 520px) {
+  .app { padding: 0 8px 60px; }
+  .hero h1 { font-size: 24px; }
+  .hero .sub { font-size: 13px; }
+  .score-wrap { flex-direction: column; align-items: center; text-align: center; }
+  .score-ring { width: 120px; height: 120px; }
+  .score-ring .val b { font-size: 32px; }
+  .stat-grid { grid-template-columns: repeat(3, 1fr); font-size: 12px; }
+  .stat b { font-size: 22px; }
+  .finding-head { flex-direction: column; gap: 6px; }
+  .finding-head .chev { align-self: flex-end; }
+  .btn-row .btn { font-size: 10px; padding: 7px 10px; }
+  .btn-sm { font-size: 10px; padding: 6px 10px; }
+  .console-title { font-size: 10px; padding: 10px 12px; }
+  .section-head h2 { font-size: 16px; }
+  .nav { padding: 14px 0 12px; }
+  .brand-name { font-size: 16px; }
+  .brand-mark { width: 34px; height: 34px; font-size: 16px; }
+  .hi-row { grid-template-columns: 1fr; gap: 2px; }
+  .hi-k { font-size: 10px; }
+  .compare-results-table table { min-width: 380px; font-size: 10px; }
+  .compare-results-table th, .compare-results-table td { padding: 4px 6px; }
+  .save-banner { flex-direction: column; text-align: center; }
+  .verify-banner { flex-direction: column; text-align: center; }
+  .vb-steps { justify-content: center; }
+  .how { min-width: 100%; }
+  .deepscan-accordion-header { font-size: 11px; gap: 6px; padding: 8px 10px; }
+  .score-wrap .nav-pill { margin: 2px 3px 3px 0; font-size: 10px; }
+  .vb-desc { display: none; }
+  .try-examples button { flex: 1 1 40%; }
+}
+
+@media (max-width: 380px) {
+  .app { padding: 0 6px 40px; }
+  .hero h1 { font-size: 20px; }
+  .hero-art { font-size: 6px; }
+  .score-ring { width: 100px; height: 100px; }
+  .score-ring .val b { font-size: 28px; }
+  .stat-grid { grid-template-columns: repeat(2, 1fr); }
+  .finding-head .t h3 { font-size: 13px; }
+  .finding-head .sev { font-size: 9px; padding: 3px 6px; }
+  .btn { font-size: 11px; padding: 11px 14px; }
+  .btn-sm { font-size: 9px; padding: 5px 8px; }
+  .console-body { padding: 12px; }
+  .brand-name { font-size: 14px; }
+  .brand-sub { display: none; }
+  .compare-results-table table { min-width: 300px; font-size: 9px; }
 }
 
 ::selection {

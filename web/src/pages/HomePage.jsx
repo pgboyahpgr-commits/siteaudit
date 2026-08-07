@@ -155,10 +155,12 @@ export default function HomePage() {
           ].map((ex) => (
             <button
               key={ex.url}
-              className="nav-pill"
+              className="nav-pill try-pill"
               type="button"
               onClick={() => { setUrl(ex.url); document.querySelector(".url-input")?.focus(); }}
-              style={{ cursor: "pointer",fontSize:12 }}
+              style={{ cursor: "pointer", fontSize: 13, padding: "10px 18px", color: "var(--cyan)", borderColor: "rgba(56,225,255,0.35)", fontWeight: 600, transition: "0.2s" }}
+              onMouseEnter={(e) => { e.currentTarget.style.boxShadow = "0 0 14px rgba(56,225,255,0.35)"; e.currentTarget.style.borderColor = "var(--cyan)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.boxShadow = ""; e.currentTarget.style.borderColor = "rgba(56,225,255,0.35)"; }}
             >
               {ex.label}
             </button>
