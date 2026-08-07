@@ -16,6 +16,7 @@ import VisionPanel from "../components/VisionPanel.jsx";
 import VibeDeepDive from "../components/VibeDeepDive.jsx";
 import { downloadJSON, downloadCSV, downloadHTML, downloadMarkdown, downloadPDF } from "../report.js";
 import ExposeOverlay from "../components/ExposeOverlay.jsx";
+import DeepScan from "../components/DeepScan.jsx";
 import { SEV_ORDER } from "../theme.js";
 import { setAgentContext } from "../agentContext.js";
 import { saveScanToHistory } from "../scanHistory.js";
@@ -586,6 +587,7 @@ export default function ScanPage() {
           <AiPanels scanId={scan.scanId} />
           <VibeDeepDive scanId={scan.scanId} ai={scan.ai} meta={scan.meta} targetUrl={scan.targetUrl} score={scan.score} completedAt={scan.completedAt} />
           <AdvisorChat scanId={scan.scanId} />
+          <DeepScan scan={scan} />
 
           <HostInfoPanel scanId={scan.scanId} />
 

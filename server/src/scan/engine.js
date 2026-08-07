@@ -104,6 +104,33 @@ export async function runScan(scan, onProgress = () => {}) {
   const home = crawlResult.pages.find((p) => p.url === crawlResult.baseUrl) || crawlResult.pages[0];
   const allPages = crawlResult.pages;
 
+  meta.pageData = allPages.slice(0, 30).map(p => ({
+    url: p.url,
+    status: p.status,
+    htmlSnippet: (p.html || "").slice(0, 15000),
+    title: p.title,
+    generator: p.generator,
+    headers: p.headers ? Object.fromEntries(Object.entries(p.headers).slice(0, 15)) : {},
+  }));
+  meta.externalResources = {
+    scripts: [...new Set(allPages.flatMap(p => {
+      const matches = (p.html || "").match(/<script[^>]+src=["']([^"']+)["']/gi) || [];
+      return matches.map(m => (m.match(/src=["']([^"']+)["']/i) || [])[1]).filter(Boolean);
+    }))].slice(0, 50),
+    styles: [...new Set(allPages.flatMap(p => {
+      const matches = (p.html || "").match(/<link[^>]+href=["']([^"']+\.css[^"']*)["']/gi) || [];
+      return matches.map(m => (m.match(/href=["']([^"']+)["']/i) || [])[1]).filter(Boolean);
+    }))].slice(0, 50),
+    images: [...new Set(allPages.flatMap(p => {
+      const matches = (p.html || "").match(/<img[^>]+src=["']([^"']+)["']/gi) || [];
+      return matches.map(m => (m.match(/src=["']([^"']+)["']/i) || [])[1]).filter(Boolean);
+    }))].slice(0, 50),
+    links: [...new Set(allPages.flatMap(p => {
+      const matches = (p.html || "").match(/<a[^>]+href=["'](https?:\/\/[^"']+)["']/gi) || [];
+      return matches.map(m => (m.match(/href=["']([^"']+)["']/i) || [])[1]).filter(Boolean);
+    }))].slice(0, 100),
+  };
+
   // ---- robots.txt ----
   try {
     const robots = await fetchRobots(targetUrl);
