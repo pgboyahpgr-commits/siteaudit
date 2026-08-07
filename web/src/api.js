@@ -100,7 +100,7 @@ export const api = {
   getReports: () => request("/reports"),
   register: (email, password) => request("/auth/register", { method: "POST", body: { email, password } }),
   login: (email, password) => request("/auth/login", { method: "POST", body: { email, password } }),
-  vibeLogin: (username) => request("/auth/vibe", { method: "POST", body: { username } }),
+  vibeLogin: (username, password) => request("/auth/vibe", { method: "POST", body: { username, password: password || undefined } }),
 
   me: () => request("/me"),
   myScans: () => request("/my/scans"),

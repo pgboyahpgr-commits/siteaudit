@@ -16,7 +16,7 @@ import { enqueue } from "./queue.js";
 import { validateToken, emailConfigured } from "./scan/verify.js";
 import { normalizeUrl } from "./scan/http.js";
 import { registerUser, loginUser, requireAuth, signToken } from "./auth.js";
-import { vibeLogin, vibeConfigured } from "./auth-vibe.js";
+import { vibeAuth, vibeConfigured } from "./auth-vibe.js";
 import { listUserScans, saveChatMessage, listChatMessages, dbKind, upsertScan, createUser, findUserByEmail } from "./db.js";
 import { newId } from "./store.js";
 
@@ -224,9 +224,10 @@ export function registerRoutes(app) {
     }
   });
 
-  // ---- Vibe Login (fingerprint-based, stored in GitHub Gist) ----
+  // ---- Vibe Auth (IP-bound username + password for cross-device) ----
   router.post("/auth/vibe", async (req, res) => {
     const username = String(req.body?.username || "").trim();
+    const password = String(req.body?.password || "").trim();
     if (!username || username.length < 2 || username.length > 30 || !/^[a-zA-Z0-9_-]+$/.test(username)) {
       return res.status(400).json({ error: { code: "VALIDATION", message: "Username must be 2-30 characters (letters, numbers, hyphens, underscores)." } });
     }
@@ -235,9 +236,12 @@ export function registerRoutes(app) {
     }
     try {
       const ip = req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.ip || req.socket?.remoteAddress || "unknown";
-      const result = await vibeLogin(username, ip);
-      res.status(result.vibe.isNew ? 201 : 200).json(result);
+      const result = await vibeAuth(username, password || undefined, ip);
+      res.status(result.vibe.status === "registered" ? 201 : 200).json(result);
     } catch (err) {
+      if (err.code === "PASSWORD_REQUIRED") {
+        return res.status(401).json({ error: { code: "PASSWORD_REQUIRED", message: "This account exists on another device. Enter your password to verify." } });
+      }
       res.status(err.statusCode || 500).json({ error: { code: "AUTH", message: err.message } });
     }
   });
