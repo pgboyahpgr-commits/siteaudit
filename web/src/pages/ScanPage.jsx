@@ -42,6 +42,7 @@ export default function ScanPage() {
   const [filter, setFilter] = useState("all");
   const [expanded, setExpanded] = useState({});
   const [showVerify, setShowVerify] = useState(false);
+  const [fullBusy, setFullBusy] = useState(false);
   const [fullError, setFullError] = useState("");
   const [shareMsg, setShareMsg] = useState("");
   const [saved, setSaved] = useState(false);
@@ -223,12 +224,13 @@ export default function ScanPage() {
 
   async function runFull() {
     setFullError("");
+    setFullBusy(true);
     try {
       const s = await api.runFull(id);
       window.location.href = `/scan/${s.scanId}`;
     } catch (err) {
       setFullError(err.message);
-      if (err.status === 403) setShowVerify(true);
+      setFullBusy(false);
     }
   }
 
@@ -352,8 +354,8 @@ export default function ScanPage() {
       {scan.status === "completed" && scan.mode !== "full" && (
         <div className="section mt">
           <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", padding: 12, background: "var(--panel-2)", borderRadius: 8 }}>
-            <button className="btn btn-magenta btn-sm" onClick={runFull} disabled={busy}>
-              {busy ? "RUNNING..." : "🚀 RUN FULL CHECK"}
+            <button className="btn btn-magenta btn-sm" onClick={runFull} disabled={fullBusy}>
+              {fullBusy ? "RUNNING..." : "🚀 RUN FULL CHECK"}
             </button>
             <span className="small dim">SQLi · XSS · CSRF · Open Redirect — active probes</span>
             <span className="small dim" style={{ marginLeft: "auto", cursor: "pointer" }} onClick={() => setShowVerify(true)}>
