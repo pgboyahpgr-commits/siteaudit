@@ -45,5 +45,7 @@ services:
       - key: SCREENSHOT_API
         value: https://image.thum.io/get/width
       - key: DATABASE_URL
-        value: postgresql://postgres.kdayneydbzzmkaoiwcay:djalok5630T@aws-0-ap-south-1.pooler.supabase.com:5432/postgres
+        value: postgresql://postgres:djalok5630T@db.kdayneydbzzmkaoiwcay.supabase.co:5432/postgres
+        sync: false
+      - key: GITHUB_GIST_TOKEN
         sync: false

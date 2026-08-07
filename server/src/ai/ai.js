@@ -189,6 +189,34 @@ export function aiProviders() {
   return order;
 }
 
+// Strip thinking/reasoning blocks and system-prompt leakage from raw AI output
+function cleanAiResponse(text) {
+  if (!text || typeof text !== "string") return "";
+  let out = text;
+  // Remove XML-style think blocks: <thinking>...</thinking> and <｜end▁of▁thinking｜>...<｜end▁of▁thinking｜>
+  out = out.replace(/<\s*think\s*>[\s\S]*?<\s*\/\s*think\s*>/gi, "");
+  out = out.replace(/<\s*thinking\s*>[\s\S]*?<\s*\/\s*thinking\s*>/gi, "");
+  out = out.replace(/<\s*reasoning\s*>[\s\S]*?<\s*\/\s*reasoning\s*>/gi, "");
+  // Strip "Here's a thinking process:" style preambles (deepseek, etc.)
+  out = out.replace(/^[\s\S]*?(?:\*\*)?Here'?s a (?:thinking|reasoning|thought) process:?\*?\*?\s*[\s\S]*?(?=\n{2,}|\n[^\n]{20,}\n|$)/i, "");
+  // Strip markdown blocks with "thinking" or "reasoning" labels
+  out = out.replace(/```(?:thinking|reasoning|thought)[\s\S]*?```/gi, "");
+  // Strip numbered analysis lists that look like model thinking (e.g. "1. **Analyze...**")
+  out = out.replace(/^(?:\d+\.\s+\*\*.*?\*\*[\s\S]*?)(?=\n\n|$)/gm, (match) => {
+    // Only strip if it looks like a chain-of-thought (multiple numbered sections)
+    const steps = match.match(/\d+\.\s+\*\*/g);
+    if (steps && steps.length >= 3) return "";
+    return match;
+  });
+  // Strip leading "Okay, ", "Alright, ", etc. followed by newlines
+  out = out.replace(/^(Okay|Alright|Sure|Great|Well|So|Hmm|Let me|I'll|I will)\b[^.!?\n]{0,80}\n\n/i, "");
+  // Remove trailing thinking remnants
+  out = out.replace(/\*\*(?:Analyze|Identify|Draft|Check|Final|Refine|Generate|Review|Consider|Evaluate|Plan|Outline|Summarize).*?\*\*[\s\S]*?(?=\n\n|$)/gi, "");
+  // Collapse excessive whitespace
+  out = out.replace(/\n{3,}/g, "\n\n").trim();
+  return out;
+}
+
 export function aiProviderNames() {
   return aiProviders();
 }
@@ -202,7 +230,8 @@ async function callLLM(system, user) {
   const errors = [];
   for (const name of order) {
     try {
-      const text = await PROVIDERS[name].call(system, user);
+      let text = await PROVIDERS[name].call(system, user);
+      text = cleanAiResponse(text);
       if (text && text.trim()) return { text, provider: name };
     } catch (err) {
       errors.push(`${name}: ${err.message}`);
@@ -559,7 +588,6 @@ export async function agentReply({ message, history = [], context = null }) {
   try {
     const { text, provider } = await callLLM(system, user);
     const reply = text.trim();
-    // Filter junk/joke responses from free AI services
     if (isJunkResponse(reply)) {
       return { reply: localAgentReply(message), provider: `local (filtered ${provider})` };
     }

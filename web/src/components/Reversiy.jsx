@@ -17,6 +17,18 @@ const HOME_CHIPS = [
 
 const STORAGE_KEY = "reversiy_history_v2";
 
+function cleanReply(text) {
+  if (!text || typeof text !== "string") return "";
+  let out = text;
+  out = out.replace(/<\s*think\s*>[\s\S]*?<\s*\/\s*think\s*>/gi, "");
+  out = out.replace(/<\s*thinking\s*>[\s\S]*?<\s*\/\s*thinking\s*>/gi, "");
+  out = out.replace(/<\s*reasoning\s*>[\s\S]*?<\s*\/\s*reasoning\s*>/gi, "");
+  out = out.replace(/```(?:thinking|reasoning|thought)[\s\S]*?```/gi, "");
+  out = out.replace(/^(Okay|Alright|Sure|Great|Well|So|Hmm|Let me|I'll|I will)\b[^.!?\n]{0,80}\n\n/i, "");
+  out = out.replace(/\n{3,}/g, "\n\n").trim();
+  return out;
+}
+
 function loadHistory() {
   try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]").slice(-20); } catch { return []; }
 }
@@ -110,7 +122,8 @@ export default function Reversiy() {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     const msg = data?.choices?.[0]?.message || {};
-    return msg.content || msg.reasoning_content || "";
+    const raw = msg.content || msg.reasoning_content || "";
+    return cleanReply(raw);
   }
 
   const send = useCallback(async (text) => {

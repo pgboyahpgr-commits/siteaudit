@@ -16,6 +16,7 @@ import { enqueue } from "./queue.js";
 import { validateToken, emailConfigured } from "./scan/verify.js";
 import { normalizeUrl } from "./scan/http.js";
 import { registerUser, loginUser, requireAuth, signToken } from "./auth.js";
+import { vibeLogin, vibeConfigured } from "./auth-vibe.js";
 import { listUserScans, saveChatMessage, listChatMessages, dbKind, upsertScan, createUser, findUserByEmail } from "./db.js";
 import { newId } from "./store.js";
 
@@ -223,41 +224,21 @@ export function registerRoutes(app) {
     }
   });
 
-  // ---- GitHub OAuth PKCE (no backend secret needed) ----
-  router.post("/auth/github/login", async (req, res) => {
-    try {
-      const { githubId, login, email, name } = req.body || {};
-      if (!githubId || !login) return res.status(400).json({ error: { code: "VALIDATION", message: "missing github user data" } });
-      const userEmail = email || `${login}@github.user`;
-      let user = await findUserByEmail(userEmail);
-      if (!user) {
-        user = { id: newId("us"), email: userEmail, passwordHash: "github:" + githubId };
-        await createUser(user);
-      }
-      res.json({ user: { id: user.id, email: user.email }, token: signToken(user.id) });
-    } catch (err) {
-      res.status(401).json({ error: { code: "AUTH", message: err.message } });
+  // ---- Vibe Login (fingerprint-based, stored in GitHub Gist) ----
+  router.post("/auth/vibe", async (req, res) => {
+    const username = String(req.body?.username || "").trim();
+    if (!username || username.length < 2 || username.length > 30 || !/^[a-zA-Z0-9_-]+$/.test(username)) {
+      return res.status(400).json({ error: { code: "VALIDATION", message: "Username must be 2-30 characters (letters, numbers, hyphens, underscores)." } });
     }
-  });
-
-  // ---- Google OAuth ----
-  router.post("/auth/google/login", async (req, res) => {
+    if (!vibeConfigured()) {
+      return res.status(501).json({ error: { code: "NOT_CONFIGURED", message: "Vibe login is not enabled on this server. Set GITHUB_GIST_TOKEN." } });
+    }
     try {
-      const { credential } = req.body || {};
-      if (!credential) return res.status(400).json({ error: { code: "VALIDATION", message: "missing google credential" } });
-      const verifyRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${credential}`);
-      const data = await verifyRes.json();
-      if (data.error) throw new Error(data.error_description || "invalid token");
-      const userEmail = data.email;
-      if (!userEmail) throw new Error("email not found in Google token");
-      let user = await findUserByEmail(userEmail);
-      if (!user) {
-        user = { id: newId("us"), email: userEmail, passwordHash: "google:" + (data.sub || "").slice(0, 30) };
-        await createUser(user);
-      }
-      res.json({ user: { id: user.id, email: user.email }, token: signToken(user.id) });
+      const ip = req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.ip || req.socket?.remoteAddress || "unknown";
+      const result = await vibeLogin(username, ip);
+      res.status(result.vibe.isNew ? 201 : 200).json(result);
     } catch (err) {
-      res.status(401).json({ error: { code: "AUTH", message: err.message } });
+      res.status(err.statusCode || 500).json({ error: { code: "AUTH", message: err.message } });
     }
   });
 

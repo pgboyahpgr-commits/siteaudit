@@ -100,9 +100,8 @@ export const api = {
   getReports: () => request("/reports"),
   register: (email, password) => request("/auth/register", { method: "POST", body: { email, password } }),
   login: (email, password) => request("/auth/login", { method: "POST", body: { email, password } }),
-  githubAuth: (code) => request("/auth/github", { method: "POST", body: { code } }),
-  githubLogin: (data) => request("/auth/github/login", { method: "POST", body: data }),
-  googleLogin: (data) => request("/auth/google/login", { method: "POST", body: data }),
+  vibeLogin: (username) => request("/auth/vibe", { method: "POST", body: { username } }),
+
   me: () => request("/me"),
   myScans: () => request("/my/scans"),
   saveSettings: (settings) => request("/settings", { method: "POST", body: settings }),
