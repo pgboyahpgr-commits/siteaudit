@@ -892,6 +892,114 @@ export async function runScan(scan, onProgress = () => {}) {
     /* non-fatal */
   }
 
+  // ---- Phase 9: Active probes (Full Check only) ----
+  if (scan.mode === "full") {
+    onProgress(9, "Active Probes", "Running SQLi, XSS, CSRF, and redirect tests...");
+    try {
+      await runActiveProbes(scan, findings, meta, allPages);
+    } catch (err) {
+      console.error("[active-probes] Error:", err.message);
+    }
+  }
+
+  async function runActiveProbes(scan, findings, meta, allPages) {
+    const origin = new URL(scan.targetUrl).origin;
+
+    const forms = [];
+    for (const page of allPages) {
+      const html = page.html || "";
+      const formRegex = /<form[^>]*action=["']([^"']*)["'][^>]*method=["']([^"']*)["'][^>]*>([\s\S]*?)<\/form>/gi;
+      let m;
+      while ((m = formRegex.exec(html)) !== null) {
+        forms.push({ url: page.url, action: m[1], method: m[2] || "get", html: m[3], pageHtml: html });
+      }
+    }
+
+    // 1. CSRF check on forms
+    for (const form of forms.slice(0, 10)) {
+      const hasToken = /csrf|token|_token|nonce|authenticity/i.test(form.html);
+      if ((form.method || "get").toLowerCase() !== "get" && !hasToken) {
+        findings.push(finding({
+          severity: "high", category: "misconfig",
+          title: "Form without CSRF protection",
+          url: form.url,
+          evidence: `Form action=${form.action} method=${form.method} has no CSRF token field`,
+          description: "This form changes state without anti-CSRF protection. Add a CSRF token + SameSite cookies.",
+          phase: "active", tool: "csrf-check"
+        }));
+      }
+    }
+
+    // 2. SQL injection probes on form endpoints
+    const sqliPayloads = ["' OR '1'='1", "1' AND 1=1--", "admin'--"];
+    for (const form of forms.slice(0, 5)) {
+      let action;
+      try { action = new URL(form.action || "/", origin).href; } catch { continue; }
+      for (const payload of sqliPayloads.slice(0, 2)) {
+        try {
+          const res = await httpGet(action + "?q=" + encodeURIComponent(payload), { timeout: 8000 });
+          const sqliErrors = /sql|mysql|syntax error|ora-|postgres|sqlite|mssql/i;
+          if (sqliErrors.test(res.text || "")) {
+            findings.push(finding({
+              severity: "critical", category: "injection",
+              title: "Possible SQL injection vulnerability",
+              url: action,
+              evidence: `Payload: ${payload} triggered SQL error in response`,
+              description: "The form endpoint returned SQL error messages when probed with injection payloads. This strongly suggests SQL injection is possible. Parameterize all queries immediately.",
+              phase: "active", tool: "sqli-probe"
+            }));
+            break;
+          }
+        } catch { /* probe failed, continue */ }
+      }
+    }
+
+    // 3. XSS reflection test
+    const xssPayloads = ["<script>alert(1)</script>", "\"><svg onload=alert(1)>", "<img src=x onerror=alert(1)>"];
+    for (const form of forms.slice(0, 5)) {
+      let action;
+      try { action = new URL(form.action || "/", origin).href; } catch { continue; }
+      const xssPayload = xssPayloads[0];
+      try {
+        const res = await httpGet(action + "?q=" + encodeURIComponent(xssPayload), { timeout: 8000 });
+        if (res.text && res.text.includes(xssPayload)) {
+          findings.push(finding({
+            severity: "high", category: "injection",
+            title: "Reflected XSS vulnerability",
+            url: action,
+            evidence: `Payload ${xssPayload} was reflected in response`,
+            description: "User input is reflected without sanitization. This enables cross-site scripting attacks. Escape output using context-appropriate encoding.",
+            phase: "active", tool: "xss-probe"
+          }));
+          break;
+        }
+      } catch { /* probe failed, continue */ }
+    }
+
+    // 4. Open redirect check
+    const redirectParams = ["url", "redirect", "next", "return", "goto", "target", "dest", "continue", "forward", "link", "uri", "path", "to", "ref", "callback"];
+    for (const page of allPages.slice(0, 8)) {
+      for (const param of redirectParams) {
+        try {
+          const testUrl = page.url.includes("?") ? `${page.url}&${param}=https://evil.com` : `${page.url}?${param}=https://evil.com`;
+          const res = await httpGet(testUrl, { timeout: 8000 });
+          const loc = res.headers?.get?.("location") || res.headers?.location;
+          if (loc && loc.includes("evil.com")) {
+            findings.push(finding({
+              severity: "medium", category: "misconfig",
+              title: "Open redirect detected via " + param + " parameter",
+              url: page.url,
+              evidence: `Setting ${param}=https://evil.com redirected to ${loc}`,
+              description: "The site redirects to arbitrary external URLs via a query parameter. This enables phishing attacks. Validate redirects against an allowlist.",
+              phase: "active", tool: "redirect-probe"
+            }));
+            break;
+          }
+        } catch { /* probe failed, continue */ }
+      }
+    }
+  }
+
   async function finish() {
     meta.vibeSources = {
       html: sources.filter((s) => s.kind === "html").slice(0, 4).map((s) => s.content).join(" ").slice(0, 200000),

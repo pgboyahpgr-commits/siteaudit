@@ -1389,6 +1389,8 @@ select:focus {
   }
 }
 
+@keyframes pulse { 0%, 100% { opacity: 0.2; } 50% { opacity: 0.5; } }
+
 /* ---------- responsive ---------- */
 @media (max-width: 720px) {
   .row-options {

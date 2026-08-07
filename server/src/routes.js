@@ -273,6 +273,41 @@ export function registerRoutes(app) {
     return res.json(publicScan(scan));
   });
 
+  // ---- Real-time scan progress via SSE ----
+  router.get("/scan/:id/stream", async (req, res) => {
+    const scanId = req.params.id;
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      "Connection": "keep-alive",
+      "X-Accel-Buffering": "no",
+    });
+    const sendEvent = (data) => {
+      res.write(`data: ${JSON.stringify(data)}\n\n`);
+    };
+    let closed = false;
+    req.on("close", () => { closed = true; });
+    
+    const timer = setInterval(() => {
+      if (closed) { clearInterval(timer); return; }
+      const scan = getScan(scanId);
+      if (!scan) { sendEvent({ error: "not found" }); clearInterval(timer); res.end(); return; }
+      sendEvent({
+        status: scan.status,
+        progress: scan.progress,
+        score: scan.score,
+        findingsCount: (scan.findings || []).length,
+        quickScanDone: scan.meta?.quickScanDone,
+        completed: scan.status === "completed" || scan.status === "failed",
+      });
+      if (scan.status === "completed" || scan.status === "failed") {
+        setTimeout(() => { clearInterval(timer); res.end(); }, 1000);
+      }
+    }, 1000);
+    
+    req.on("close", () => { clearInterval(timer); });
+  });
+
   router.get("/scan/:id/findings", async (req, res) => {
     const scan = getScan(req.params.id);
     if (!scan) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Scan not found." } });

@@ -22,16 +22,17 @@ async function processQueue() {
       const scan = getScan(id);
       if (!scan) continue;
       if (scan.status !== "queued") continue;
+      const modePhases = scan.mode === "full" ? 9 : 8;
       updateScan(id, {
         status: "running",
-        progress: { phase: "discovery", phaseIndex: 1, phasesTotal: 8, message: "Starting..." },
+        progress: { phase: "discovery", phaseIndex: 1, phasesTotal: modePhases, message: "Starting..." },
       });
 
       const phaseNames = ["discovery", "fingerprint", "headers", "tls", "enumeration", "source"];
       try {
         const result = await runScan(scan, (phaseIndex, phase, message) => {
         updateScan(id, {
-          progress: { phase, phaseIndex, phasesTotal: 8, message },
+          progress: { phase, phaseIndex, phasesTotal: modePhases, message },
         });
         });
         setScanFindings(id, result.findings, result.score);
@@ -47,7 +48,7 @@ async function processQueue() {
         updateScan(id, {
           status: "failed",
           error: err.message || "Scan failed",
-          progress: { phase: "failed", phaseIndex: 0, phasesTotal: 8, message: "Scan failed: " + (err.message || "unknown error") },
+          progress: { phase: "failed", phaseIndex: 0, phasesTotal: modePhases, message: "Scan failed: " + (err.message || "unknown error") },
         });
       }
     }

@@ -17,6 +17,7 @@ import VibeDeepDive from "../components/VibeDeepDive.jsx";
 import { downloadJSON, downloadCSV, downloadHTML, downloadMarkdown, downloadPDF } from "../report.js";
 import ExposeOverlay from "../components/ExposeOverlay.jsx";
 import DeepScan from "../components/DeepScan.jsx";
+import CIGenerator from "../components/CIGenerator.jsx";
 import { SEV_ORDER } from "../theme.js";
 import { setAgentContext } from "../agentContext.js";
 import { saveScanToHistory } from "../scanHistory.js";
@@ -53,6 +54,8 @@ export default function ScanPage() {
     let stop = false;
     let timer;
     let retries = 0;
+    let eventSource = null;
+    
     const load = async () => {
       try {
         const s = await api.getScan(id);
@@ -60,7 +63,7 @@ export default function ScanPage() {
         setScan(s);
         setError("");
         if (s.status === "completed" && prevStatusRef.current && prevStatusRef.current !== "completed") {
-          try { new Audio("data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACAf39/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4CAf39/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4CAf39/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4CAf39/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4CAf39/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4CAf39/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4CAf39/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4CAf39/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4CAf39/f4B/f3+A").play().catch(()=>{}); } catch {}
+          try { new Audio("data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACAf39/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4CAf39/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4CAf39/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4CAf39/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4CAf39/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4CAf39/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4CAf39/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4CAf39/f4B/f3+A").play().catch(()=>{}); } catch {}
         }
         prevStatusRef.current = s.status;
         setAgentContext({ scanId: s.scanId, targetUrl: s.targetUrl });
@@ -69,8 +72,36 @@ export default function ScanPage() {
           setQuickFindings(null);
         }
         retries = 0;
+        
         if (s.status === "queued" || s.status === "running") {
-          timer = setTimeout(load, 1300);
+          try {
+            eventSource = new EventSource(`/api/scan/${id}/stream`);
+            eventSource.onmessage = (event) => {
+              if (stop) { eventSource.close(); return; }
+              try {
+                const data = JSON.parse(event.data);
+                if (data.error) { eventSource.close(); timer = setTimeout(load, 1300); return; }
+                setScan(prev => ({
+                  ...prev,
+                  status: data.status,
+                  progress: data.progress,
+                  score: data.score,
+                  findings: prev.findings || [],
+                  meta: { ...prev.meta, quickScanDone: data.quickScanDone },
+                }));
+                if (data.completed) {
+                  eventSource.close();
+                  timer = setTimeout(load, 500);
+                }
+              } catch { eventSource.close(); timer = setTimeout(load, 1300); }
+            };
+            eventSource.onerror = () => {
+              eventSource.close();
+              if (!stop) timer = setTimeout(load, 1300);
+            };
+          } catch {
+            if (!stop) timer = setTimeout(load, 1300);
+          }
           if (s.meta?.quickScanDone && !quickFindings) {
             api.getFindings(id).then((f) => setQuickFindings(f)).catch(() => {});
           }
@@ -89,6 +120,7 @@ export default function ScanPage() {
     return () => {
       stop = true;
       clearTimeout(timer);
+      if (eventSource) eventSource.close();
       setAgentContext({ scanId: null, targetUrl: null });
     };
   }, [id]);
@@ -153,8 +185,16 @@ export default function ScanPage() {
   if (!scan) {
     return (
       <div className="center mt" style={{ padding: 60 }}>
-        <div className="loading">
-          <span className="spinner" /> connecting to scanner...
+        <div className="console" style={{ width: "100%", maxWidth: 600 }}>
+          <div className="console-title"><span className="traffic"><span className="t g"/><span className="t a"/><span className="t r"/></span><span>loading scan...</span></div>
+          <div className="console-body">
+            <div className="loading"><span className="spinner" /> connecting to scanner...</div>
+            <div style={{ marginTop: 20, display: "flex", flexDirection: "column", gap: 12 }}>
+              {[1,2,3,4,5].map(i => (
+                <div key={i} style={{ height: 20, background: "var(--panel-2)", borderRadius: 4, opacity: 0.3, animation: `pulse 1.5s ease-in-out ${i*0.2}s infinite` }} />
+              ))}
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -588,6 +628,7 @@ export default function ScanPage() {
           <VibeDeepDive scanId={scan.scanId} ai={scan.ai} meta={scan.meta} targetUrl={scan.targetUrl} score={scan.score} completedAt={scan.completedAt} />
           <AdvisorChat scanId={scan.scanId} />
           <DeepScan scan={scan} />
+          <CIGenerator scan={scan} />
 
           <HostInfoPanel scanId={scan.scanId} />
 

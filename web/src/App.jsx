@@ -1,21 +1,23 @@
-import { useState } from "react";
+import { useState, lazy, Suspense } from "react";
 import { Routes, Route, Link, useNavigate } from "react-router-dom";
 import HomePage from "./pages/HomePage.jsx";
 import ScanPage from "./pages/ScanPage.jsx";
 import AuthPage from "./pages/AuthPage.jsx";
 import MyScansPage from "./pages/MyScansPage.jsx";
 import FaqPage from "./pages/FaqPage.jsx";
-import DetectorPage from "./pages/DetectorPage.jsx";
-import SettingsPage from "./pages/SettingsPage.jsx";
+const DetectorPage = lazy(() => import("./pages/DetectorPage.jsx"));
+const SettingsPage = lazy(() => import("./pages/SettingsPage.jsx"));
 import TermsPage from "./pages/TermsPage.jsx";
 import PrivacyPage from "./pages/PrivacyPage.jsx";
 import GuidePage from "./pages/GuidePage.jsx";
 import ScanHistoryPage from "./pages/ScanHistoryPage.jsx";
 import UrlEngineerPage from "./pages/UrlEngineerPage.jsx";
-import ComparePage from "./pages/ComparePage.jsx";
+const ComparePage = lazy(() => import("./pages/ComparePage.jsx"));
 import Reversiy from "./components/Reversiy.jsx";
 import TourOverlay from "./components/TourOverlay.jsx";
 import { getToken, logout } from "./api.js";
+
+const PageLoader = () => <div className="center mt" style={{ padding: 60 }}><div className="loading"><span className="spinner" /> loading...</div></div>;
 
 export default function App() {
   const [authed, setAuthed] = useState(!!getToken());
@@ -93,8 +95,8 @@ export default function App() {
 
         <Routes>
           <Route path="/" element={<HomePage />} />
-          <Route path="/detector" element={<DetectorPage />} />
-          <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/detector" element={<Suspense fallback={<PageLoader />}><DetectorPage /></Suspense>} />
+          <Route path="/settings" element={<Suspense fallback={<PageLoader />}><SettingsPage /></Suspense>} />
           <Route path="/scan/:id" element={<ScanPage />} />
           <Route path="/auth" element={<AuthPage onAuthed={onAuthed} />} />
           <Route path="/my" element={<MyScansPage onAuthed={onAuthed} />} />
@@ -104,7 +106,7 @@ export default function App() {
           <Route path="/guide" element={<GuidePage />} />
           <Route path="/history" element={<ScanHistoryPage />} />
           <Route path="/url-engineer" element={<UrlEngineerPage />} />
-          <Route path="/compare" element={<ComparePage />} />
+          <Route path="/compare" element={<Suspense fallback={<PageLoader />}><ComparePage /></Suspense>} />
         </Routes>
 
         <footer className="footer">

@@ -77,12 +77,14 @@ export function updateScan(id, patch) {
 }
 
 export function setScanFindings(id, findings, score) {
+  const scan = getScan(id);
+  const totalPhases = scan?.mode === "full" ? 9 : 8;
   return updateScan(id, {
     findings,
     score,
     status: "completed",
     completedAt: new Date().toISOString(),
-    progress: { phase: "done", phaseIndex: 8, phasesTotal: 8, message: "Scan complete." },
+    progress: { phase: "done", phaseIndex: totalPhases, phasesTotal: totalPhases, message: "Scan complete." },
   });
 }
 
