@@ -22,6 +22,13 @@ import {
 import { lookupCves } from "./cve.js";
 import { getFix, computeScore } from "./fixes.js";
 import { collectHostInfo } from "./hostinfo.js";
+import { checkDnsDeep, generateDnsFixes } from "./dnsdeep.js";
+import { auditJsSupplyChain } from "./supplychain.js";
+import { parseSecurityTxt } from "./securitytxt.js";
+import { fingerprintWaf, generateWafFix } from "./waf.js";
+import { scoreCookies } from "./cookiescore.js";
+import { checkJwts } from "./jwtcheck.js";
+import { scoreEndpointRisk } from "./endpointrisk.js";
 
 let findSeq = 0;
 const newFindingId = () => `fn_${(++findSeq).toString(36)}${Math.random().toString(36).slice(2, 6)}`;
@@ -54,7 +61,7 @@ const MIXED_RE = /(?:src|href)="(http:\/\/[^"']+)"/gi;
 export async function runScan(scan, onProgress = () => {}) {
   const targetUrl = scan.targetUrl;
   const findings = [];
-  const meta = { tech: [], services: [], pagesCrawled: 0, jsFiles: [], endpoints: [], endpointCount: 0, cookies: [], robots: null, crawls: [], subdomains: [] };
+  const meta = { tech: [], services: [], pagesCrawled: 0, jsFiles: [], endpoints: [], endpointCount: 0, cookies: [], robots: null, crawls: [], subdomains: [], dnsDeep: null, dnsFixes: [], supplyChain: [], securityTxt: null, waf: [], cookieScore: null, jwts: [], endpointRisk: [] };
 
   // ---- Phase 1: Discovery ----
   onProgress(1, "Discovery", "Crawling pages and collecting source code...");
@@ -1007,11 +1014,106 @@ export async function runScan(scan, onProgress = () => {}) {
     };
     meta.titles = allPages.map((p) => p.title).filter(Boolean).slice(0, 20);
     meta.uniquePages = new Set(allPages.map((p) => `${(p.html || "").length}|${p.title}|${(p.html || "").slice(0, 200)}`)).size;
+    const host = new URL(targetUrl).hostname;
     try {
-      meta.hostInfo = await collectHostInfo(new URL(targetUrl).hostname);
+      meta.hostInfo = await collectHostInfo(host);
     } catch {
       meta.hostInfo = null;
     }
+
+    // ── Phase: DNS Deep Dive (SPF/DKIM/DMARC/CAA + full records) ──
+    try {
+      const dnsDeep = await checkDnsDeep(host);
+      meta.dnsDeep = dnsDeep;
+      meta.dnsFixes = generateDnsFixes(host, dnsDeep, findings);
+
+      // Report DNS findings
+      if (!dnsDeep.spf.present) {
+        findings.push(finding({ severity: "high", category: "misconfig", title: "No SPF record — email spoofing possible", url: targetUrl, evidence: "SPF record not found in DNS", description: "Without SPF, anyone can send email claiming to be from this domain. Add a TXT record: v=spf1 mx -all", phase: "dns-deep", tool: "dns" }));
+      } else if (dnsDeep.spf.mode !== "hardfail") {
+        findings.push(finding({ severity: "medium", category: "misconfig", title: `SPF policy is ${dnsDeep.spf.mode || "unknown"} (not hardfail)`, url: targetUrl, evidence: dnsDeep.spf.raw, description: "SPF softfail/neutral allows spoofed emails through. Use -all (hardfail) for strict enforcement.", phase: "dns-deep", tool: "dns" }));
+      }
+      if (!dnsDeep.dmarc.present) {
+        findings.push(finding({ severity: "high", category: "misconfig", title: "No DMARC record — email spoofing not prevented", url: targetUrl, evidence: "DMARC record not found in DNS", description: "DMARC tells receivers what to do with failed SPF/DKIM email. Add TXT _dmarc record with p=reject.", phase: "dns-deep", tool: "dns" }));
+      } else if (dnsDeep.dmarc.policy === "none") {
+        findings.push(finding({ severity: "medium", category: "misconfig", title: "DMARC policy is 'none' — monitoring only, no enforcement", url: targetUrl, evidence: dnsDeep.dmarc.raw, description: "Set p=reject to actually block spoofed emails. Currently only collecting reports.", phase: "dns-deep", tool: "dns" }));
+      }
+      if (!dnsDeep.dkim.present) {
+        findings.push(finding({ severity: "medium", category: "misconfig", title: "No DKIM records found — email signing not configured", url: targetUrl, evidence: "No DKIM selectors found for common names", description: "DKIM cryptographically signs outgoing email so receivers can verify it was sent by this domain.", phase: "dns-deep", tool: "dns" }));
+      }
+    } catch { meta.dnsDeep = null; }
+
+    // ── Phase: JS Supply Chain Audit ──
+    try {
+      meta.supplyChain = await auditJsSupplyChain(meta.jsFiles || [], crawlResult.pages || []);
+      const vulnLibs = meta.supplyChain.filter(s => s.cves.length > 0);
+      for (const lib of vulnLibs) {
+        for (const cve of lib.cves) {
+          findings.push(finding({
+            severity: cve.cvss.startsWith("9") ? "critical" : "high",
+            category: "cve",
+            title: `${lib.lib} ${lib.version} — ${cve.cve}: ${cve.title}`,
+            url: lib.src,
+            evidence: `CVSS ${cve.cvss} · version ${lib.version} ≤ ${cve.maxVersion}`,
+            description: `Third-party library ${lib.lib} v${lib.version} has a known vulnerability. Upgrade to latest patched version.`,
+            cveId: cve.cve,
+            phase: "supply-chain",
+            tool: "js-audit",
+          }));
+        }
+      }
+      const noSri = meta.supplyChain.filter(s => s.sri && !s.sri.startsWith("error"));
+      if (noSri.length) {
+        findings.push(finding({ severity: "info", category: "info", title: `${noSri.length} CDN scripts have SRI hashes computed`, url: targetUrl, evidence: noSri.map(s => `${s.lib || s.src.split("/").pop()}: ${s.sri}`).join("\n"), description: "Subresource Integrity hashes prevent CDN compromise from injecting malicious code. We computed these for you.", phase: "supply-chain", tool: "sri" }));
+      }
+    } catch { meta.supplyChain = null; }
+
+    // ── Phase: Security.txt RFC 9116 ──
+    try {
+      meta.securityTxt = await parseSecurityTxt(targetUrl);
+      if (!meta.securityTxt.present) {
+        findings.push(finding({ severity: "info", category: "info", title: "security.txt not published (RFC 9116)", url: meta.securityTxt.url, evidence: "No security.txt found at /.well-known/ or /", description: "Publishing security.txt tells researchers how to report vulnerabilities. It's a sign of a mature security program.", phase: "security-txt", tool: "parser" }));
+      } else if (meta.securityTxt.issues.length) {
+        findings.push(finding({ severity: "low", category: "misconfig", title: `security.txt has ${meta.securityTxt.issues.length} compliance issue(s)`, url: meta.securityTxt.url, evidence: meta.securityTxt.issues.join("\n"), description: "Improve security.txt to fully comply with RFC 9116 for better vulnerability disclosure.", phase: "security-txt", tool: "parser" }));
+      }
+    } catch { meta.securityTxt = null; }
+
+    // ── Phase: WAF Fingerprinting ──
+    try {
+      const homeHeaders = home.headers ? Object.fromEntries(Object.entries(home.headers)) : {};
+      meta.waf = fingerprintWaf(homeHeaders, meta.cookies || [], home.html || "");
+      if (meta.waf.length) {
+        const wafFix = generateWafFix(meta.waf);
+        findings.push(finding({ severity: "info", category: "info", title: `WAF detected: ${meta.waf.map(w => `${w.name} (${w.confidence})`).join(", ")}`, url: targetUrl, evidence: JSON.stringify(meta.waf), description: wafFix ? wafFix.recommendations.join(". ") : "WAF presence detected. Verify rules are actively blocking attacks.", phase: "waf", tool: "fingerprint" }));
+      }
+    } catch { meta.waf = []; }
+
+    // ── Phase: Cookie Security Scoring ──
+    try {
+      meta.cookieScore = scoreCookies(meta.cookies || []);
+      if (meta.cookieScore.totalCookies > 0 && meta.cookieScore.overallScore < 70) {
+        findings.push(finding({ severity: "low", category: "misconfig", title: `Cookie security score: ${meta.cookieScore.overallScore}/100`, url: targetUrl, evidence: `${meta.cookieScore.totalCookies} cookies · ${meta.cookieScore.cookies.filter(c => c.issues.length).length} with issues`, description: "Cookies are missing security flags. Enable Secure, HttpOnly, SameSite, and consider __Host- prefix for sensitive cookies.", phase: "cookies", tool: "scorer" }));
+      }
+    } catch { meta.cookieScore = null; }
+
+    // ── Phase: JWT Analysis ──
+    try {
+      meta.jwts = checkJwts(sources, targetUrl);
+      const badJwts = meta.jwts.filter(j => j.issues.some(i => i.severity === "critical" || i.severity === "high"));
+      for (const j of badJwts) {
+        findings.push(finding({ severity: "critical", category: "secret", title: "Insecure JWT detected in source code", url: j.source, evidence: j.issues.map(i => i.msg).join("\n"), description: "A JWT with security issues was found. Check the algorithm and claims — alg:none or missing expiration are critical vulnerabilities.", phase: "source", tool: "jwt-analyzer" }));
+      }
+    } catch { meta.jwts = []; }
+
+    // ── Phase: Endpoint Risk Scoring ──
+    try {
+      meta.endpointRisk = scoreEndpointRisk(meta.endpoints || []);
+      const risky = meta.endpointRisk.filter(e => e.risk === "critical" || e.risk === "high");
+      if (risky.length) {
+        findings.push(finding({ severity: "high", category: "endpoint", title: `${risky.length} high-risk endpoints detected`, url: targetUrl, evidence: risky.slice(0, 5).map(e => `${e.risk}: ${e.path} (${e.matchedPatterns.map(p => p.label).join(", ")})`).join("\n"), description: "These endpoints expose sensitive functionality. Ensure proper authentication and authorization on each.", phase: "endpoints", tool: "risk-scorer" }));
+      }
+    } catch { meta.endpointRisk = []; }
+
     const score = computeScore(findings);
     return { findings, score, meta };
   }

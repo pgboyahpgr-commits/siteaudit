@@ -17,6 +17,7 @@ import VibeDeepDive from "../components/VibeDeepDive.jsx";
 import { downloadJSON, downloadCSV, downloadHTML, downloadMarkdown, downloadPDF } from "../report.js";
 import ExposeOverlay from "../components/ExposeOverlay.jsx";
 import DeepScan from "../components/DeepScan.jsx";
+import DeepScanPanel from "../components/DeepScanPanel.jsx";
 import CIGenerator from "../components/CIGenerator.jsx";
 import { SEV_ORDER } from "../theme.js";
 import { setAgentContext } from "../agentContext.js";
@@ -636,6 +637,8 @@ export default function ScanPage() {
           <VibeDeepDive scanId={scan.scanId} ai={scan.ai} meta={scan.meta} targetUrl={scan.targetUrl} score={scan.score} completedAt={scan.completedAt} />
           <AdvisorChat scanId={scan.scanId} />
           <DeepScan scan={scan} />
+
+          <DeepScanPanel scan={scan} />
           <CIGenerator scan={scan} />
 
           <HostInfoPanel scanId={scan.scanId} />
