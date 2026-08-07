@@ -1,1378 +1,865 @@
 import { useState, useMemo } from "react";
 
-function scoreColor(score) {
-  if (score == null) return "var(--dim)";
-  if (score >= 90) return "var(--green)";
-  if (score >= 70) return "var(--cyan)";
-  if (score >= 50) return "var(--amber)";
+function clr(score) {
+  if (score >= 85) return "var(--green)";
+  if (score >= 65) return "var(--cyan)";
+  if (score >= 40) return "var(--amber)";
   return "var(--red)";
 }
-
-function scoreBadge(score) {
-  const c = scoreColor(score);
-  const label = score >= 90 ? "PASS" : score >= 70 ? "OK" : score >= 50 ? "WARN" : "FAIL";
-  return { color: c, label };
+function badge(score) {
+  return { color: clr(score), label: score >= 85 ? "PASS" : score >= 65 ? "OK" : score >= 40 ? "WARN" : "FAIL" };
 }
 
-function htmlTagAttrs(raw, tag) {
-  const re = new RegExp(`<${tag}\\b([^>]*)>`, "gi");
-  const results = [];
-  let m;
-  while ((m = re.exec(raw)) !== null) {
-    results.push(m[1]);
-  }
-  return results;
-}
-
-function extractAttr(attrsStr, name) {
-  const re = new RegExp(`${name}\\s*=\\s*["']([^"']*)["']`, "i");
-  const m = attrsStr.match(re);
-  return m ? m[1] : null;
-}
-
-function extractSrcs(raw, tag) {
-  return htmlTagAttrs(raw, tag)
-    .map((a) => extractAttr(a, "src"))
-    .filter(Boolean);
-}
-
-function extractHrefs(raw, tag) {
-  return htmlTagAttrs(raw, tag)
-    .map((a) => extractAttr(a, "href"))
-    .filter(Boolean);
-}
-
-function extractEls(raw, el) {
-  const re = new RegExp(`<${el}\\b[^>]*>`, "gi");
-  const m = raw.match(re);
-  return m || [];
-}
-
-function extractInnerStyle(raw) {
-  const re = /<style\b[^>]*>([\s\S]*?)<\/style>/gi;
-  const results = [];
-  let m;
-  while ((m = re.exec(raw)) !== null) {
-    results.push(m[1]);
-  }
-  return results;
-}
-
-function extractHeadTag(raw, tag) {
-  const re = new RegExp(`<${tag}\\b[^>]*>([\\s\\S]*?)<\/${tag}>`, "gi");
-  const results = [];
-  let m;
-  while ((m = re.exec(raw)) !== null) {
-    results.push(m[0]);
-  }
-  return results;
-}
-
-function extractMeta(raw, nameOrProp) {
-  const attr = nameOrProp.startsWith("og:") || nameOrProp.startsWith("twitter:") ? "property" : "name";
-  const re = new RegExp(`<meta\\b[^>]*${attr}\\s*=\\s*["']${nameOrProp.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}["'][^>]*>`, "gi");
-  return re.test(raw);
-}
-
-function extractMetaContent(raw, nameOrProp) {
-  const attr = nameOrProp.startsWith("og:") || nameOrProp.startsWith("twitter:") ? "property" : "name";
-  const re = new RegExp(`<meta\\b[^>]*${attr}\\s*=\\s*["']${nameOrProp.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}["'][^>]*content\\s*=\\s*["']([^"']*)["']`, "i");
-  const m = raw.match(re);
-  return m ? m[1] : null;
-}
-
-function extractTitle(raw) {
-  const m = raw.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i);
-  return m ? m[1].trim() : null;
-}
-
-function countTags(raw) {
-  const m = raw.match(/<\w+/gi);
-  return m ? m.length : 0;
-}
-
-function parseEmail(raw) {
-  const re = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
-  const m = raw.match(re);
-  return m || [];
-}
-
-function parseDomain(url) {
+// ── Real HTML parsing using DOMParser ──
+function parseHTML(html) {
   try {
-    return new URL(url).hostname;
-  } catch {
-    return url;
-  }
+    const doc = new DOMParser().parseFromString(html || "", "text/html");
+    return doc;
+  } catch { return null; }
 }
 
-function crawlPages(meta) {
-  return meta?.pagesCrawled || [];
+function getHTML(meta) {
+  const pages = meta?.pageData || [];
+  return pages.map((p) => ({ url: p.url, html: p.htmlSnippet || p.html || "", status: p.status }));
 }
 
-function jsFiles(meta) {
-  return meta?.jsFiles || [];
+function getExternal(meta) {
+  return meta?.externalResources || { scripts: [], styles: [], images: [], links: [] };
 }
 
-function techList(meta) {
-  return meta?.tech || [];
-}
-
-function services(meta) {
+function getServices(meta) {
   return meta?.services || [];
 }
 
-/* ──────────────────────────────────────────────
-   ENGINE 1 — JS Bundle Analyzer
-   ────────────────────────────────────────────── */
-function engineJSBundles(meta) {
-  const files = jsFiles(meta);
-  const findings = [];
-  let heavyCount = 0;
-  let minifiedCount = 0;
-  let unminifiedCount = 0;
-  let estimatedKB = 0;
-  const libVersions = [];
-  const libPatterns = [
-    { re: /react(?:-dom)?[.\-_](\d+\.\d+\.\d+)/i, name: "React" },
-    { re: /vue[.\-_](\d+\.\d+\.\d+)/i, name: "Vue" },
-    { re: /jquery[.\-_](\d+\.\d+\.\d+)/i, name: "jQuery" },
-    { re: /lodash[.\-_](\d+\.\d+\.\d+)/i, name: "Lodash" },
-    { re: /moment[.\-_](\d+\.\d+\.\d+)/i, name: "Moment.js" },
-    { re: /d3[.\-_](\d+\.\d+\.\d+)/i, name: "D3" },
-    { re: /chart[.\-_](\d+\.\d+\.\d+)/i, name: "Chart.js" },
-    { re: /angular[.\-_](\d+\.\d+\.\d+)/i, name: "Angular" },
+function getTech(meta) {
+  return meta?.tech || [];
+}
+
+// ══════════════════════════════════════════════
+// ENGINE 1 — Real JS Bundle Analysis
+// ══════════════════════════════════════════════
+function engineJSMaster(meta) {
+  const files = meta?.jsFiles || [];
+  const ext = getExternal(meta);
+  const allScripts = [...new Set([...files.map(f => typeof f === "string" ? f : f.url || ""), ...ext.scripts])];
+  let totalSize = 0, minified = 0, unminified = 0, heavy = 0, withSRI = 0, thirdParty = 0, firstParty = 0;
+  const frameworks = [];
+  const heavyFiles = [];
+  const host = meta?.host || "";
+
+  const JS_PATTERNS = [
+    [/react.*(\d+\.\d+\.\d+)/i, "React"], [/vue.*(\d+\.\d+\.\d+)/i, "Vue.js"],
+    [/jquery.*(\d+\.\d+\.\d+)/i, "jQuery"], [/lodash.*(\d+\.\d+\.\d+)/i, "Lodash"],
+    [/moment.*(\d+\.\d+\.\d+)/i, "Moment.js"], [/d3.*(\d+\.\d+\.\d+)/i, "D3.js"],
+    [/three.*(\d+\.\d+\.\d+)/i, "Three.js"], [/chart.*(\d+\.\d+\.\d+)/i, "Chart.js"],
+    [/angular.*(\d+\.\d+\.\d+)/i, "Angular"], [/svelte.*(\d+\.\d+\.\d+)/i, "Svelte"],
+    [/alpine.*(\d+\.\d+\.\d+)/i, "Alpine.js"], [/htmx.*(\d+\.\d+\.\d+)/i, "HTMX"],
+    [/preact.*(\d+\.\d+\.\d+)/i, "Preact"], [/lit.*(\d+\.\d+\.\d+)/i, "Lit"],
   ];
 
-  files.forEach((f) => {
-    const filename = typeof f === "string" ? f : f.url || f;
-    if (/\.min\./i.test(filename)) {
-      minifiedCount++;
-    } else {
-      unminifiedCount++;
+  allScripts.forEach((s) => {
+    const isExternal = s.startsWith("http");
+    const isThirdParty = isExternal && !s.includes(host);
+    if (isThirdParty) thirdParty++;
+    else firstParty++;
+
+    if (/\.min\./i.test(s)) minified++;
+    else unminified++;
+    if (s.length > 80 || (typeof s === "string" && s.includes("bundle"))) {
+      heavy++;
+      heavyFiles.push(s.split("/").pop()?.split("?")[0] || s.slice(-40));
     }
-    const weight = typeof f === "object" ? f.size || f.kb || 0 : 0;
-    estimatedKB += weight;
-    if (weight > 100 || (typeof f === "string" && f.length > 80)) {
-      heavyCount++;
-      findings.push({ type: "heavy", file: filename, detail: `Estimated ${weight > 0 ? weight + "KB" : "large"}` });
-    }
-    libPatterns.forEach((p) => {
-      const m = filename.match(p.re);
-      if (m) libVersions.push(`${p.name} ${m[1]}`);
-    });
+    frameworks.forEach(p => { const m = s.match(p[0]); if (m) frameworks.push(`${p[1]}@${m[1]}`); });
   });
 
-  if (unminifiedCount > 0)
-    findings.push({ type: "unminified", count: unminifiedCount, detail: `${unminifiedCount} unminified JS files found (harder to cache, larger payload)` });
-  if (files.length === 0)
-    findings.push({ type: "none", detail: "No JS files detected in crawl" });
-
-  const score = files.length === 0 ? 100 : heavyCount > 3 ? 50 : heavyCount > 0 ? 70 : unminifiedCount > 2 ? 65 : 100;
+  const score = heavy > 3 ? 40 : heavy > 0 ? 60 : unminified > 2 ? 65 : thirdParty > 8 ? 55 : 95;
   return {
     score,
-    passed: score >= 70,
-    findings,
-    recommendations: heavyCount > 0 ? ["Consider code-splitting heavy bundles (>100KB)"] : [],
-    detail: { total: files.length, estimatedKB, heavyCount, minifiedCount, unminifiedCount, libVersions },
+    passed: score >= 65,
+    findings: [
+      heavy > 0 && `${heavy} large bundles detected — consider code splitting`,
+      thirdParty > 5 && `${thirdParty} third-party scripts — each is a trust boundary`,
+      unminified > 0 && `${unminified} unminified scripts — harder to cache, expose source logic`,
+    ].filter(Boolean),
+    recommendations: [
+      heavy > 0 && "Split heavy bundles with dynamic imports or code splitting",
+      thirdParty > 5 && "Audit third-party scripts for necessity — each increases attack surface",
+      unminified > 0 && "Minify JS in production builds",
+    ].filter(Boolean),
+    detail: { total: allScripts.length, firstParty, thirdParty, minified, unminified, heavy, heavyFiles },
   };
 }
 
-/* ──────────────────────────────────────────────
-   ENGINE 2 — CSS Selector Complexity
-   ────────────────────────────────────────────── */
-function engineCSSComplexity(meta) {
-  const pages = crawlPages(meta);
-  const findings = [];
-  let totalImportant = 0;
-  let deepSelectors = 0;
-  let universalSelectors = 0;
-  let idSelectors = 0;
+// ══════════════════════════════════════════════
+// ENGINE 2 — CSS Quality & Bloat
+// ══════════════════════════════════════════════
+function engineCSSMaster(meta) {
+  const pages = getHTML(meta);
+  let important = 0, deepNested = 0, universalStars = 0, idSelectors = 0, totalRules = 0;
+  let inlineStyles = 0, externalStylesheets = 0;
 
   pages.forEach((p) => {
     const html = p.html || "";
-    const styleBlocks = extractInnerStyle(html);
-    styleBlocks.forEach((css) => {
-      const impMatches = css.match(/!important/gi);
-      if (impMatches) totalImportant += impMatches.length;
-      const uniMatches = css.match(/\*(?![\w-])/g);
-      if (uniMatches) universalSelectors += uniMatches.length;
-      const idMatches = css.match(/#[a-zA-Z][\w-]*/g);
-      if (idMatches) idSelectors += idMatches.length;
+    const doc = parseHTML(html);
+    if (!doc) return;
 
-      const blocks = css.split(/\{/);
+    const styleTags = doc.querySelectorAll("style");
+    styleTags.forEach((s) => {
+      const css = s.textContent || "";
+      important += (css.match(/!important/gi) || []).length;
+      universalStars += (css.match(/ \*(?![\w-])/g) || []).length;
+      idSelectors += (css.match(/#[a-zA-Z][\w-]*\s*\{/g) || []).length;
+      const rules = css.split("{").length - 1;
+      totalRules += rules;
+
+      // Detect deep nesting by counting combinator depth
+      const blocks = css.split("{");
       blocks.forEach((b) => {
-        const sel = b.replace(/\}[\s\S]*$/, "").trim();
-        const depth = (sel.match(/>/g) || []).length;
-        if (depth > 3) deepSelectors++;
+        const sel = b.split("}").pop() || "";
+        const combinators = (sel.match(/[ >+~]/g) || []).length;
+        if (combinators > 4) deepNested++;
       });
     });
+
+    inlineStyles += (html.match(/style\s*=\s*["']/gi) || []).length;
+    externalStylesheets += doc.querySelectorAll("link[rel=stylesheet]").length;
   });
 
-  if (totalImportant > 5) findings.push({ type: "important", count: totalImportant, detail: `${totalImportant} !important overrides found — specificity wars` });
-  if (deepSelectors > 3) findings.push({ type: "deep", count: deepSelectors, detail: `${deepSelectors} selectors with >3 nesting levels` });
-  if (universalSelectors > 5) findings.push({ type: "universal", count: universalSelectors, detail: `${universalSelectors} universal * selector usages` });
-  if (idSelectors > 5) findings.push({ type: "ids", count: idSelectors, detail: `${idSelectors} ID selectors (bad for reusability)` });
-
-  const score = totalImportant > 20 ? 30 : totalImportant > 5 ? 50 : deepSelectors > 10 ? 40 : deepSelectors > 3 ? 60 : universalSelectors > 10 ? 55 : 100;
-  return {
-    score,
-    passed: score >= 70,
-    findings,
-    recommendations: totalImportant > 5 ? ["Reduce !important usage — rely on specificity instead"] : [],
-    detail: { totalImportant, deepSelectors, universalSelectors, idSelectors },
-  };
-}
-
-/* ──────────────────────────────────────────────
-   ENGINE 3 — Auto-Generated CSP Policy
-   ────────────────────────────────────────────── */
-function engineCSP(meta) {
-  const pages = crawlPages(meta);
-  const scriptSrcs = new Set();
-  const styleSrcs = new Set();
-  const fontSrcs = new Set();
-  const imgSrcs = new Set();
-  const connectSrcs = new Set();
-  const frameSrcs = new Set();
-
-  pages.forEach((p) => {
-    const html = p.html || "";
-    extractSrcs(html, "script").forEach((s) => {
-      try { scriptSrcs.add(new URL(s, p.url || meta?.targetUrl || "http://localhost").origin); } catch { scriptSrcs.add(parseDomain(s)); }
-    });
-    extractHrefs(html, "link").forEach((h) => {
-      const domain = parseDomain(h);
-      const lower = h.toLowerCase();
-      if (lower.includes(".css") || lower.includes("stylesheet")) styleSrcs.add(domain);
-      if (lower.includes(".woff") || lower.includes(".ttf") || lower.includes(".eot")) fontSrcs.add(domain);
-    });
-    extractSrcs(html, "img").forEach((s) => {
-      try { imgSrcs.add(new URL(s, p.url || meta?.targetUrl || "http://localhost").origin); } catch { }
-    });
-    const xhrRe = /fetch\(["']([^"']*)["']\)|\.get\(["']([^"']*)["']\)|\.post\(["']([^"']*)["']\)/gi;
-    let xm;
-    while ((xm = xhrRe.exec(html)) !== null) {
-      const url = xm[1] || xm[2] || xm[3];
-      try { connectSrcs.add(new URL(url, p.url || "http://localhost").origin); } catch { }
-    }
-    const iframeSrcs = extractSrcs(html, "iframe");
-    iframeSrcs.forEach((s) => {
-      try { frameSrcs.add(new URL(s, p.url || "http://localhost").origin); } catch { frameSrcs.add(parseDomain(s)); }
-    });
-  });
-
-  scriptSrcs.add("'self'");
-  scriptSrcs.add("'unsafe-inline'");
-  styleSrcs.add("'self'");
-  styleSrcs.add("'unsafe-inline'");
-  fontSrcs.add("'self'");
-  imgSrcs.add("'self'");
-  imgSrcs.add("data:");
-  connectSrcs.add("'self'");
-  frameSrcs.add("'self'");
-
-  const csp = [
-    `default-src 'self';`,
-    `script-src ${[...scriptSrcs].join(" ")};`,
-    `style-src ${[...styleSrcs].join(" ")};`,
-    `img-src ${[...imgSrcs].join(" ")};`,
-    `font-src ${[...fontSrcs].join(" ")};`,
-    `connect-src ${[...connectSrcs].join(" ")};`,
-    `frame-src ${[...frameSrcs].join(" ")};`,
-  ].join(" ");
-
-  return {
-    score: pages.length > 0 ? 85 : 60,
-    passed: true,
-    findings: [{ type: "csp", detail: `Generated CSP with ${scriptSrcs.size} script origins, ${styleSrcs.size} style origins` }],
-    recommendations: ["Apply the generated CSP to your server headers or <meta> tag"],
-    detail: { cspString: csp },
-  };
-}
-
-/* ──────────────────────────────────────────────
-   ENGINE 4 — Email Security Config
-   ────────────────────────────────────────────── */
-function engineEmailSecurity(meta) {
-  const dns = meta?.dns || {};
   const findings = [];
-  let spf = false;
-  let dkim = false;
-  let dmarc = false;
+  if (important > 10) findings.push(`${important} !important overrides — specificity war in progress`);
+  if (deepNested > 5) findings.push(`${deepNested} deeply nested selectors (>4 levels) — fragile and hard to maintain`);
+  if (idSelectors > 8) findings.push(`${idSelectors} ID selectors — zero reusability, maximum specificity`);
+  if (universalStars > 5) findings.push(`${universalStars} universal * selectors — performance hit on large DOM`);
+  if (inlineStyles > 10) findings.push(`${inlineStyles} inline styles — blocks CSP, hurts maintainability`);
 
-  const txtRecords = dns.txt || [];
-  txtRecords.forEach((r) => {
-    if (typeof r === "string") {
-      if (/v=spf1/i.test(r)) spf = true;
-      if (/v=DKIM1/i.test(r)) dkim = true;
-      if (/v=DMARC1/i.test(r)) dmarc = true;
-    }
-  });
-
-  if (!spf) findings.push({ type: "missing-spf", detail: "No SPF record found — email spoofing possible" });
-  if (!dkim) findings.push({ type: "missing-dkim", detail: "No DKIM record found — emails cannot be verified" });
-  if (!dmarc) findings.push({ type: "missing-dmarc", detail: "No DMARC record found — missing reporting & enforcement" });
-
-  const domain = meta?.targetUrl ? parseDomain(meta.targetUrl) : "example.com";
-  const score = (spf ? 33 : 0) + (dkim ? 33 : 0) + (dmarc ? 34 : 0);
+  const demerits = important + deepNested * 2 + idSelectors + universalStars + inlineStyles;
+  const score = demerits > 50 ? 30 : demerits > 25 ? 50 : demerits > 10 ? 70 : 95;
   return {
     score,
-    passed: score >= 70,
+    passed: score >= 65,
     findings,
     recommendations: [
-      !spf && `Add SPF TXT record: v=spf1 include:_spf.${domain} ~all`,
-      !dkim && `Generate DKIM key and add selector._domainkey.${domain} TXT record: v=DKIM1; k=rsa; p=YOUR_PUBLIC_KEY`,
-      !dmarc && `Add DMARC TXT record (_dmarc.${domain}): v=DMARC1; p=none; rua=mailto:dmarc@${domain}`,
+      important > 10 && "Refactor CSS to use proper specificity instead of !important",
+      deepNested > 5 && "Flatten selectors — BEM or utility-first approaches prevent deep nesting",
+      idSelectors > 8 && "Replace ID selectors with class selectors for reusability",
+      inlineStyles > 10 && "Move inline styles to external stylesheets",
     ].filter(Boolean),
-    detail: { spf, dkim, dmarc },
+    detail: { important, deepNested, universalStars, idSelectors, totalRules, inlineStyles, externalStylesheets },
   };
 }
 
-/* ──────────────────────────────────────────────
-   ENGINE 5 — Security.txt Generator
-   ────────────────────────────────────────────── */
-function engineSecurityTxt(meta, findingsArr) {
-  const pages = crawlPages(meta);
-  let allHtml = pages.map((p) => p.html || "").join("\n");
-  const emails = parseEmail(allHtml);
-  let contact = "security@example.com";
-  const securityEmails = emails.filter((e) => /security|admin|contact|info|abuse|support/i.test(e));
-  if (securityEmails.length > 0) contact = securityEmails[0];
-  else if (emails.length > 0) contact = emails[0];
+// ══════════════════════════════════════════════
+// ENGINE 3 — Smart CSP Generator
+// ══════════════════════════════════════════════
+function engineCSPMaster(meta) {
+  const pages = getHTML(meta);
+  const ext = getExternal(meta);
+  const scriptSrcs = new Set(["'self'"]);
+  const styleSrcs = new Set(["'self'"]);
+  const imgSrcs = new Set(["'self'", "data:"]);
+  const fontSrcs = new Set(["'self'"]);
+  const connectSrcs = new Set(["'self'"]);
+  const frameSrcs = new Set();
+  const mediaSrcs = new Set();
 
-  const targetUrl = meta?.targetUrl || "https://example.com";
-  const expires = new Date(Date.now() + 365 * 86400000).toISOString().split("T")[0];
+  const host = meta?.host || "";
+  const addDomain = (url, set) => {
+    if (!url || url.startsWith("data:") || url.startsWith("blob:")) return;
+    try { const u = new URL(url, `https://${host}`); set.add(u.origin); } catch {}
+  };
 
-  const groups = {};
-  if (findingsArr) {
-    findingsArr.forEach((f) => {
-      const cat = f.category || "general";
-      if (!groups[cat]) groups[cat] = [];
-      groups[cat].push(f.title || f.description || "");
-    });
-  }
+  ext.scripts.forEach((s) => addDomain(s, scriptSrcs));
+  ext.styles.forEach((s) => addDomain(s, styleSrcs));
+  ext.images.forEach((s) => addDomain(s, imgSrcs));
+  ext.links.forEach((s) => addDomain(s, connectSrcs));
 
-  const lines = [
-    "Contact: " + contact,
-    "Expires: " + expires,
-    "Canonical: " + targetUrl + "/.well-known/security.txt",
-    "Preferred-Languages: en",
-    "",
-    "# Generated by SiteAudit Deep Scan",
-    "# This file should be placed at: " + targetUrl + "/.well-known/security.txt",
-    "",
-    "# Acknowledged vulnerabilities by category:",
-  ];
-  Object.entries(groups).slice(0, 5).forEach(([cat, items]) => {
-    lines.push(`# ${cat}: ${items.slice(0, 3).join("; ")}`);
+  // Check for inline scripts/styles
+  pages.forEach((p) => {
+    const html = p.html || "";
+    if (/<script[^>]*>(?!\s*<\/script)[\s\S]*?<\/script>/i.test(html)) scriptSrcs.add("'unsafe-inline'");
+    if (/<style[^>]*>[\s\S]*?<\/style>/i.test(html)) styleSrcs.add("'unsafe-inline'");
+    if (/on(?:click|load|error|submit|change|mouse)\s*=/i.test(html)) {
+      scriptSrcs.add("'unsafe-hashes'");
+    }
   });
 
+  const dirs = [];
+  if (frameSrcs.size) dirs.push(`frame-src ${[...frameSrcs].join(" ")}`);
+  if (mediaSrcs.size) dirs.push(`media-src ${[...mediaSrcs].join(" ")}`);
+
+  const csp = [
+    `default-src 'self'`,
+    `script-src ${[...scriptSrcs].join(" ")}`,
+    `style-src ${[...styleSrcs].join(" ")}`,
+    `img-src ${[...imgSrcs].join(" ")}`,
+    `font-src ${[...fontSrcs].join(" ")}`,
+    `connect-src ${[...connectSrcs].join(" ")}`,
+    ...dirs,
+    `frame-ancestors 'self'`,
+    `base-uri 'self'`,
+    `form-action 'self'`,
+  ].join("; ");
+
+  const hasInline = scriptSrcs.has("'unsafe-inline'") || styleSrcs.has("'unsafe-inline'");
+  const score = hasInline ? 50 : scriptSrcs.size > 3 ? 65 : 95;
   return {
-    score: 100,
+    score,
+    passed: score >= 65,
+    findings: [
+      hasInline && "Inline scripts/styles detected — needs 'unsafe-inline' in CSP (weakens protection)",
+      scriptSrcs.size > 4 && `${scriptSrcs.size - 1} external script origins — broad script-src`,
+    ].filter(Boolean),
+    recommendations: [
+      hasInline && "Extract inline scripts to external files, use nonces/hashes instead of 'unsafe-inline'",
+      "Copy the generated CSP below into your server config or meta tag",
+    ].filter(Boolean),
+    detail: { cspString: csp, scriptOrigins: [...scriptSrcs].filter(s => s !== "'self'"), hasInline },
+  };
+}
+
+// ══════════════════════════════════════════════
+// ENGINE 4 — Email Security (SPF/DKIM/DMARC)
+// ══════════════════════════════════════════════
+function engineEmailMaster(meta) {
+  const txt = (meta?.hostInfo?.txt || []).join(" ");
+  const host = meta?.host || "example.com";
+  const spf = /v=spf1/i.test(txt);
+  const dkim = /dkim/i.test(txt);
+  const dmarc = /v=dmarc1/i.test(txt) || /_dmarc/i.test(txt);
+
+  const records = {};
+  if (!spf) records.spf = `v=spf1 mx a include:_spf.${host.replace(/^www\./, "")} ~all`;
+  if (!dkim) records.dkim = `Add DKIM by generating a key pair and publishing the public key as a TXT record at default._domainkey.${host.replace(/^www\./, "")}`;
+  if (!dmarc) records.dmarc = `v=DMARC1; p=quarantine; rua=mailto:dmarc@${host.replace(/^www\./, "")}; ruf=mailto:dmarc-forensic@${host.replace(/^www\./, "")}; pct=100; adkim=r; aspf=r`;
+
+  const missing = [!spf && "SPF", !dkim && "DKIM", !dmarc && "DMARC"].filter(Boolean);
+  const score = missing.length === 0 ? 95 : missing.length === 1 ? 60 : missing.length === 2 ? 35 : 15;
+  return {
+    score,
+    passed: score >= 65,
+    findings: missing.map(m => `Missing ${m} record — emails may be flagged as spam or spoofed`),
+    recommendations: [
+      !spf && `Add SPF TXT record: ${records.spf}`,
+      !dkim && `Configure DKIM signing for your email provider`,
+      !dmarc && `Add DMARC TXT record at _dmarc.${host.replace(/^www\./, "")}: ${records.dmarc}`,
+    ].filter(Boolean),
+    detail: { spf, dkim, dmarc, records, missing },
+  };
+}
+
+// ══════════════════════════════════════════════
+// ENGINE 5 — Security.txt Generator
+// ══════════════════════════════════════════════
+function engineSecurityTxtMaster(scan) {
+  const host = scan?.meta?.host || scan?.targetUrl || "example.com";
+  const domain = host.replace(/^www\./, "");
+  const findings = scan?.findings || [];
+  const emails = [];
+  findings.forEach((f) => {
+    if (f.evidence) {
+      const m = f.evidence.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g);
+      if (m) emails.push(...m);
+    }
+  });
+  const contact = [...new Set(emails)].find(e => e.includes(domain)) || [...new Set(emails)][0] || `security@${domain}`;
+  const expiry = new Date(Date.now() + 365 * 86400000).toISOString().split("T")[0];
+
+  const txt = [
+    `Contact: mailto:${contact}`,
+    `Expires: ${expiry}`,
+    `Preferred-Languages: en`,
+    `Canonical: https://${domain}/.well-known/security.txt`,
+    `Policy: https://${domain}/security-policy`,
+  ].join("\n");
+
+  return {
+    score: 90,
     passed: true,
-    findings: [{ type: "securitytxt", detail: `Generated with contact ${contact}, expires ${expires}` }],
-    recommendations: ["Place security.txt at /.well-known/security.txt on your server"],
-    detail: { securityTxt: lines.join("\n"), contact, expires },
+    findings: ["security.txt not currently published — recommended for vulnerability disclosure"],
+    recommendations: [`Upload this file to https://${domain}/.well-known/security.txt`],
+    detail: { securityTxt: txt, contact, expiry },
   };
 }
 
-/* ──────────────────────────────────────────────
-   ENGINE 6 — Broken Resource Detector
-   ────────────────────────────────────────────── */
+// ══════════════════════════════════════════════
+// ENGINE 6 — Broken Resource Hunter
+// ══════════════════════════════════════════════
 function engineBrokenResources(meta) {
-  const pages = crawlPages(meta);
-  const findings = [];
-  let totalResources = 0;
-  let brokenCount = 0;
-  const brokenExamples = [];
+  const pages = getHTML(meta);
+  let total4xx = 0, total5xx = 0;
+  const broken = [];
 
   pages.forEach((p) => {
-    const html = p.html || "";
-    const status = p.status || 200;
-    const imgSrcs = extractSrcs(html, "img");
-    const scriptSrcs = extractSrcs(html, "script");
-    const linkHrefs = extractHrefs(html, "link");
-
-    [...imgSrcs, ...scriptSrcs, ...linkHrefs].forEach((url) => {
-      totalResources++;
-      if (typeof p.brokenResources === "object") {
-        const broken = p.brokenResources || {};
-        if (broken[url]) {
-          brokenCount++;
-          if (brokenExamples.length < 5) brokenExamples.push({ url, status: broken[url] });
-        }
-      }
-    });
-    if (status >= 400) {
-      brokenCount++;
-      if (brokenExamples.length < 5) brokenExamples.push({ url: p.url, status });
+    if (p.status >= 400) {
+      if (p.status < 500) total4xx++;
+      else total5xx++;
+      broken.push({ url: p.url, status: p.status });
     }
   });
 
-  if (totalResources === 0) {
-    return { score: 100, passed: true, findings: [{ type: "none", detail: "No resources to analyze" }], recommendations: [], detail: { totalResources: 0, brokenCount: 0, brokenExamples: [] } };
-  }
-
-  const percent = Math.round((brokenCount / totalResources) * 100);
-  const score = percent > 10 ? 30 : percent > 5 ? 50 : percent > 1 ? 70 : 100;
-
-  if (brokenCount > 0) findings.push({ type: "broken", count: brokenCount, total: totalResources, detail: `${brokenCount}/${totalResources} resources returned non-200 status (${percent}%)` });
-
+  const score = broken.length > 5 ? 30 : broken.length > 0 ? 55 : 100;
   return {
     score,
-    passed: score >= 70,
-    findings,
-    recommendations: brokenCount > 0 ? ["Replace or remove broken resource URLs", "Set up a 404 monitor or link checker"] : [],
-    detail: { totalResources, brokenCount, brokenExamples },
+    passed: score >= 65,
+    findings: [
+      total4xx > 0 && `${total4xx} pages returned 4xx errors — check internal links`,
+      total5xx > 0 && `${total5xx} pages returned 5xx errors — server-side issues detected`,
+    ].filter(Boolean),
+    recommendations: [
+      total4xx > 0 && "Fix or redirect broken internal links",
+      total5xx > 0 && "Investigate server errors — check logs for 5xx responses",
+    ].filter(Boolean),
+    detail: { total4xx, total5xx, total: broken.length, brokenExamples: broken.slice(0, 8) },
   };
 }
 
-/* ──────────────────────────────────────────────
-   ENGINE 7 — Semantic HTML Auditor
-   ────────────────────────────────────────────── */
+// ══════════════════════════════════════════════
+// ENGINE 7 — Semantic HTML Auditor
+// ══════════════════════════════════════════════
 function engineSemanticHTML(meta) {
-  const pages = crawlPages(meta);
-  const findings = [];
-  let hasH1 = false, hasH2 = false, hasH3 = false;
-  let hasMain = false, hasNav = false, hasArticle = false, hasSection = false, hasAside = false;
-  let headingIssues = 0;
+  const pages = getHTML(meta);
+  let pagesMissingMain = 0, pagesMissingNav = 0, brokenHeading = 0, totalChecked = 0;
+  let totalLandmarks = 0;
 
   pages.forEach((p) => {
-    const html = p.html || "";
-    if (/<h1\b/i.test(html)) hasH1 = true;
-    if (/<h2\b/i.test(html)) hasH2 = true;
-    if (/<h3\b/i.test(html)) hasH3 = true;
-    if (/<main\b/i.test(html)) hasMain = true;
-    if (/<nav\b/i.test(html)) hasNav = true;
-    if (/<article\b/i.test(html)) hasArticle = true;
-    if (/<section\b/i.test(html)) hasSection = true;
-    if (/<aside\b/i.test(html)) hasAside = true;
+    const doc = parseHTML(p.html);
+    if (!doc) return;
+    totalChecked++;
+    if (!doc.querySelector("main")) pagesMissingMain++;
+    if (!doc.querySelector("nav")) pagesMissingNav++;
 
-    const hTags = html.match(/<\/?h[1-6]\b/gi) || [];
-    if (hTags.length > 0) {
-      const order = [];
-      hTags.forEach((t) => {
-        const n = parseInt(t.match(/\d/)[0]);
-        if (order.length > 0 && n > order[order.length - 1] + 1 && !t.startsWith("</")) {
-          headingIssues++;
-        }
-        if (!t.startsWith("</")) order.push(n);
-      });
-    }
+    const headings = doc.querySelectorAll("h1,h2,h3,h4,h5,h6");
+    let prevLevel = 0;
+    headings.forEach((h) => {
+      const level = parseInt(h.tagName[1]);
+      if (level > prevLevel + 1 && prevLevel > 0) brokenHeading++;
+      prevLevel = level;
+    });
+
+    ["header", "main", "nav", "footer", "aside", "article", "section"].forEach((el) => {
+      if (doc.querySelector(el)) totalLandmarks++;
+    });
   });
 
-  let score = 100;
-  if (!hasH1) { score -= 25; findings.push({ type: "missing-h1", detail: "No <h1> element — critical for SEO and accessibility" }); }
-  if (!hasH2 && hasH1) { score -= 10; findings.push({ type: "missing-h2", detail: "Has <h1> but no <h2> — incomplete heading hierarchy" }); }
-  if (!hasMain) { score -= 20; findings.push({ type: "missing-main", detail: "No <main> landmark — screen-reader users have no content target" }); }
-  if (!hasNav) { score -= 10; findings.push({ type: "missing-nav", detail: "No <nav> landmark" }); }
-  if (headingIssues > 0) { score -= 10; findings.push({ type: "heading-order", count: headingIssues, detail: `${headingIssues} heading order violations detected` }); }
-
-  const bonus = (hasArticle ? 3 : 0) + (hasSection ? 3 : 0) + (hasAside ? 4 : 0);
-  score = Math.min(100, Math.max(0, score + bonus));
-
+  const score = pagesMissingMain > 0 ? 40 : brokenHeading > 0 ? 50 : pagesMissingNav > 0 ? 60 : totalLandmarks < 3 ? 55 : 90;
   return {
     score,
-    passed: score >= 70,
-    findings,
-    recommendations: !hasMain ? ["Add a <main> element wrapping your primary content"] : [],
-    detail: { hasH1, hasH2, hasH3, hasMain, hasNav, hasArticle, hasSection, hasAside, headingIssues },
+    passed: score >= 65,
+    findings: [
+      pagesMissingMain > 0 && `${pagesMissingMain}/${totalChecked} pages missing <main> — affects screen reader navigation`,
+      brokenHeading > 0 && `${brokenHeading} heading level skips detected — h1→h3 without h2`,
+      pagesMissingNav > 0 && `${pagesMissingNav}/${totalChecked} pages missing <nav> — no navigation landmark`,
+      totalLandmarks < 3 && `Only ${totalLandmarks} semantic landmarks across ${totalChecked} pages — bare minimum HTML`,
+    ].filter(Boolean),
+    recommendations: [
+      pagesMissingMain > 0 && "Add <main> element to wrap primary content",
+      brokenHeading > 0 && "Ensure headings follow proper hierarchy: h1 → h2 → h3",
+      totalLandmarks < 5 && "Add <header>, <nav>, <main>, <footer> landmarks for accessibility",
+    ].filter(Boolean),
+    detail: { pagesMissingMain, pagesMissingNav, brokenHeading, totalLandmarks, totalChecked },
   };
 }
 
-/* ──────────────────────────────────────────────
-   ENGINE 8 — Meta Tag Completeness
-   ────────────────────────────────────────────── */
-function engineMetaTags(meta) {
-  const pages = crawlPages(meta);
-  const findings = [];
-  if (pages.length === 0) {
-    return { score: 0, passed: false, findings: [{ type: "none", detail: "No crawled pages to check" }], recommendations: [], detail: {} };
-  }
-  const html = pages.map((p) => p.html || "").join("\n");
-  const checks = [
-    { key: "title", label: "<title>", present: !!extractTitle(html) },
-    { key: "description", label: "<meta description>", present: extractMeta(html, "description") },
-    { key: "viewport", label: "<meta viewport>", present: extractMeta(html, "viewport") },
-    { key: "og:title", label: "og:title", present: extractMeta(html, "og:title") },
-    { key: "og:description", label: "og:description", present: extractMeta(html, "og:description") },
-    { key: "og:image", label: "og:image", present: extractMeta(html, "og:image") },
-    { key: "og:url", label: "og:url", present: extractMeta(html, "og:url") },
-    { key: "twitter:card", label: "twitter:card", present: extractMeta(html, "twitter:card") },
-  ];
+// ══════════════════════════════════════════════
+// ENGINE 8 — Meta Tag Completeness
+// ══════════════════════════════════════════════
+function engineMetaTagsMaster(meta) {
+  const pages = getHTML(meta);
+  const allMeta = { title: true, description: true, viewport: true, charset: true, ogTitle: true, ogDesc: true, ogImage: true, ogUrl: true, twitterCard: true, canonical: true, robots: true };
+  const present = [];
+  const missing = [];
 
-  const missing = checks.filter((c) => !c.present);
-  const found = checks.filter((c) => c.present);
-  missing.forEach((c) => findings.push({ type: "missing", key: c.key, detail: `${c.label} is missing` }));
+  pages.forEach((p) => {
+    const doc = parseHTML(p.html);
+    if (!doc) return;
 
-  const score = Math.round((found.length / checks.length) * 100);
+    if (doc.title) { allMeta.title = false; present.push("title"); } else missing.push("title");
+    if (doc.querySelector("meta[name=description]")) { allMeta.description = false; present.push("description"); } else missing.push("description");
+    if (doc.querySelector("meta[name=viewport]")) { allMeta.viewport = false; present.push("viewport"); } else missing.push("viewport");
+    if (doc.querySelector("meta[charset]") || doc.querySelector("meta[http-equiv=content-type]")) { allMeta.charset = false; present.push("charset"); }
+    if (doc.querySelector("meta[property='og:title']")) { allMeta.ogTitle = false; present.push("og:title"); } else missing.push("og:title");
+    if (doc.querySelector("meta[property='og:description']")) { allMeta.ogDesc = false; present.push("og:description"); } else missing.push("og:description");
+    if (doc.querySelector("meta[property='og:image']")) { allMeta.ogImage = false; present.push("og:image"); } else missing.push("og:image");
+    if (doc.querySelector("meta[name='twitter:card']")) { allMeta.twitterCard = false; present.push("twitter:card"); } else missing.push("twitter:card");
+    if (doc.querySelector("link[rel=canonical]")) { allMeta.canonical = false; present.push("canonical"); } else missing.push("canonical");
+  });
+
+  const uniqPresent = [...new Set(present)];
+  const uniqMissing = [...new Set(missing)];
+  const score = uniqMissing.length === 0 ? 100 : uniqMissing.length <= 2 ? 75 : uniqMissing.length <= 4 ? 50 : 25;
   return {
     score,
-    passed: score >= 70,
-    findings,
-    recommendations: missing.length > 0 ? ["Add missing meta tags for better SEO and social previews"] : [],
-    detail: { present: found.map((c) => c.label), missing: missing.map((c) => c.label) },
+    passed: score >= 65,
+    findings: uniqMissing.map(m => `Missing <meta> tag: ${m} — affects SEO and social sharing`),
+    recommendations: uniqMissing.map(m => `Add <meta> tag for ${m}`),
+    detail: { present: uniqPresent, missing: uniqMissing },
   };
 }
 
-/* ──────────────────────────────────────────────
-   ENGINE 9 — Structured Data Parser
-   ────────────────────────────────────────────── */
+// ══════════════════════════════════════════════
+// ENGINE 9 — Structured Data (JSON-LD)
+// ══════════════════════════════════════════════
 function engineStructuredData(meta) {
-  const pages = crawlPages(meta);
-  const allHtml = pages.map((p) => p.html || "").join("\n");
-  const ldBlocks = [];
-  const re = /<script\s+type\s*=\s*["']application\/ld\+json["']\s*>([\s\S]*?)<\/script>/gi;
-  let m;
-  while ((m = re.exec(allHtml)) !== null) {
-    ldBlocks.push(m[1]);
-  }
+  const pages = getHTML(meta);
+  const schemaTypes = {};
+  let totalBlocks = 0;
 
-  const schemaCount = {};
-  const fancyNames = {
-    Organization: "Organization", WebSite: "WebSite", Article: "Article",
-    NewsArticle: "News Article", BlogPosting: "Blog Post", Product: "Product",
-    LocalBusiness: "Local Business", Person: "Person", Event: "Event",
-    FAQPage: "FAQ Page", HowTo: "How-To Guide", BreadcrumbList: "Breadcrumbs",
-    SearchAction: "Search Action", VideoObject: "Video", ImageObject: "Image",
-    Recipe: "Recipe", Review: "Review", AggregateRating: "Rating",
-  };
-
-  ldBlocks.forEach((json) => {
-    try {
-      const obj = JSON.parse(json);
-      const types = [];
-      if (Array.isArray(obj["@graph"])) {
-        obj["@graph"].forEach((item) => {
-          if (item["@type"]) {
-            const t = Array.isArray(item["@type"]) ? item["@type"] : [item["@type"]];
-            t.forEach((x) => types.push(x));
-          }
+  pages.forEach((p) => {
+    const doc = parseHTML(p.html);
+    if (!doc) return;
+    const scripts = doc.querySelectorAll("script[type='application/ld+json']");
+    scripts.forEach((s) => {
+      try {
+        const data = JSON.parse(s.textContent || "");
+        const items = Array.isArray(data) ? data : [data];
+        items.forEach((item) => {
+          const type = item["@type"] || "Unknown";
+          schemaTypes[type] = (schemaTypes[type] || 0) + 1;
+          totalBlocks++;
         });
-      } else if (obj["@type"]) {
-        const t = Array.isArray(obj["@type"]) ? obj["@type"] : [obj["@type"]];
-        types.push(...t);
-      }
-      types.forEach((t) => {
-        schemaCount[t] = (schemaCount[t] || 0) + 1;
-      });
-    } catch { /* ignore malformed JSON */ }
+      } catch { /* malformed JSON-LD */ }
+    });
   });
 
-  const findings = [];
-  const schemaTypes = Object.keys(schemaCount);
-  schemaTypes.forEach((t) => {
-    findings.push({ type: "schema", schema: t, count: schemaCount[t], detail: `${schemaCount[t]}× ${fancyNames[t] || t}` });
-  });
-
-  const score = schemaTypes.length >= 3 ? 100 : schemaTypes.length >= 1 ? 70 : 20;
+  const types = Object.keys(schemaTypes);
+  const score = types.length >= 3 ? 95 : types.length >= 1 ? 70 : totalBlocks > 0 ? 50 : 25;
   return {
     score,
-    passed: score >= 70,
-    findings: findings.length > 0 ? findings : [{ type: "none", detail: "No structured data (JSON-LD) blocks found" }],
-    recommendations: schemaTypes.length < 2 ? ["Add structured data (JSON-LD) to improve rich results in search engines"] : [],
-    detail: { totalBlocks: ldBlocks.length, schemaTypes, schemaCount },
+    passed: score >= 65,
+    findings: [
+      types.length === 0 && "No structured data found — missing rich result eligibility for search engines",
+      totalBlocks > 0 && `${totalBlocks} JSON-LD blocks with ${types.length} schema types detected`,
+    ].filter(Boolean),
+    recommendations: [
+      types.length === 0 && "Add JSON-LD structured data: Organization, WebSite, and BreadcrumbList minimum",
+      !schemaTypes.Organization && "Add Organization schema with name, url, and logo",
+      !schemaTypes.WebSite && "Add WebSite schema with SearchAction for sitelinks search box",
+    ].filter(Boolean),
+    detail: { totalBlocks, types, schemaTypes },
   };
 }
 
-/* ──────────────────────────────────────────────
-   ENGINE 10 — DOM Complexity Score
-   ────────────────────────────────────────────── */
+// ══════════════════════════════════════════════
+// ENGINE 10 — DOM Complexity
+// ══════════════════════════════════════════════
 function engineDOMComplexity(meta) {
-  const pages = crawlPages(meta);
-  const findings = [];
-  let maxElements = 0;
-  let maxDepth = 0;
-  let totalElements = 0;
-  let pagesOver1000 = 0;
-  let pagesOver20Depth = 0;
+  const pages = getHTML(meta);
+  let totalElements = 0, maxDepth = 0, maxElements = 0;
+  const pageStats = [];
 
   pages.forEach((p) => {
-    const html = p.html || "";
-    const count = countTags(html);
+    const doc = parseHTML(p.html);
+    if (!doc) return;
+    const all = doc.querySelectorAll("*");
+    const count = all.length;
     totalElements += count;
     if (count > maxElements) maxElements = count;
-    if (count > 1000) pagesOver1000++;
 
     let depth = 0;
-    let curDepth = 0;
-    for (let i = 0; i < html.length; i++) {
-      if (html[i] === "<" && html[i + 1] !== "/" && html[i + 1] !== "!") {
-        const tagEnd = html.indexOf(">", i);
-        const tag = html.slice(i, tagEnd);
-        if (!/\/>$/.test(tag) && !/^(br|hr|img|input|meta|link|area|base|col|embed|source|track|wbr)\b/i.test(tag.slice(1))) {
-          curDepth++;
-          if (curDepth > maxDepth) maxDepth = curDepth;
-        }
-      } else if (html[i] === "<" && html[i + 1] === "/") {
-        curDepth = Math.max(0, curDepth - 1);
-      }
+    const walker = document.createTreeWalker(doc.documentElement, NodeFilter.SHOW_ELEMENT);
+    let node;
+    while ((node = walker.nextNode())) {
+      let d = 0, parent = node.parentElement;
+      while (parent) { d++; parent = parent.parentElement; }
+      if (d > depth) depth = d;
     }
-    if (maxDepth > 20) pagesOver20Depth++;
+    if (depth > maxDepth) maxDepth = depth;
+    pageStats.push({ url: p.url, elements: count, depth });
   });
 
-  const avg = pages.length > 0 ? Math.round(totalElements / pages.length) : 0;
+  const avgElements = pages.length > 0 ? Math.round(totalElements / pages.length) : 0;
+  const findings = [];
+  if (maxElements > 1500) findings.push(`Largest page has ${maxElements} DOM elements — heavy rendering cost`);
+  if (maxDepth > 25) findings.push(`Max DOM depth: ${maxDepth} levels — deeply nested structure hurts performance`);
+  if (avgElements > 800) findings.push(`Average ${avgElements} elements per page — high DOM complexity`);
 
-  if (maxElements > 1000) findings.push({ type: "heavy", count: maxElements, detail: `Heaviest page has ${maxElements} elements — consider splitting or lazy loading` });
-  if (maxDepth > 20) findings.push({ type: "deep", depth: maxDepth, detail: `DOM depth reaches ${maxDepth} levels — overly nested markup` });
-
-  let score = 100;
-  if (pagesOver1000 > 0) score -= 30;
-  if (pagesOver20Depth > 0) score -= 20;
-  if (avg > 800) score -= 20;
-  if (avg > 500) score -= 10;
-  score = Math.max(0, score);
-
+  const score = maxElements > 2000 ? 20 : maxElements > 1000 ? 45 : maxElements > 500 ? 65 : maxDepth > 20 ? 55 : 95;
   return {
     score,
-    passed: score >= 70,
+    passed: score >= 65,
     findings,
-    recommendations: maxElements > 1000 ? ["Reduce DOM size — aim for under 1000 elements per page"] : [],
-    detail: { maxElements, maxDepth, avgElements: avg, pagesOver1000, pagesOver20Depth, totalPages: pages.length },
+    recommendations: [
+      maxElements > 1000 && "Reduce DOM size — virtualize long lists, remove unused elements",
+      maxDepth > 20 && "Flatten DOM structure — avoid excessive wrapper divs",
+    ].filter(Boolean),
+    detail: { totalElements, avgElements, maxElements, maxDepth, totalPages: pages.length, pageStats: pageStats.slice(0, 5) },
   };
 }
 
-/* ──────────────────────────────────────────────
-   ENGINE 11 — Third-Party Risk Score
-   ────────────────────────────────────────────── */
+// ══════════════════════════════════════════════
+// ENGINE 11 — Third-Party Risk Exposure
+// ══════════════════════════════════════════════
 function engineThirdPartyRisk(meta) {
-  const svcs = services(meta);
-  const findings = [];
-  const riskMap = {
-    analytics: { score: 25, label: "Analytics", color: "low" },
-    cdn: { score: 10, label: "CDN", color: "very-low" },
-    ads: { score: 70, label: "Ads", color: "high" },
-    advertising: { score: 70, label: "Ads", color: "high" },
-    chat: { score: 40, label: "Chat", color: "medium" },
-    messaging: { score: 40, label: "Chat", color: "medium" },
-    auth: { score: 20, label: "Auth", color: "low" },
-    fonts: { score: 10, label: "Fonts", color: "very-low" },
-    monitoring: { score: 25, label: "Monitoring", color: "low" },
-    captcha: { score: 25, label: "Captcha", color: "low" },
-    payments: { score: 45, label: "Payments", color: "medium" },
-    widgets: { score: 35, label: "Widgets", color: "medium" },
-    tracking: { score: 50, label: "Tracking", color: "medium-high" },
+  const svcs = getServices(meta);
+  const RISK = {
+    Analytics: 2, Ads: 5, Payments: 3, Chat: 2, Marketing: 3, CDN: 1, Auth: 1, Other: 3,
   };
-
   let totalRisk = 0;
+  const byRisk = { high: [], medium: [], low: [] };
+
   svcs.forEach((s) => {
-    const name = (s.name || "").toLowerCase();
-    const category = (s.category || "").toLowerCase();
-    let matched = riskMap[name] || riskMap[category];
-    if (!matched) {
-      if (/analytics|gtag|ga4|segment|mixpanel/.test(name)) matched = riskMap.analytics;
-      else if (/cdn|cloudflare|cloudfront|fastly|akamai/.test(name)) matched = riskMap.cdn;
-      else if (/ads|advertising|doubleclick|adroll/.test(name)) matched = riskMap.ads;
-      else if (/chat|intercom|drift|zendesk|tawk/.test(name)) matched = riskMap.chat;
-      else matched = { score: 30, label: "Other", color: "low" };
-    }
-    totalRisk += matched.score;
-    findings.push({ service: s.name || s, risk: matched.score, label: matched.label, detail: `${s.name || s} — ${matched.label} risk (score: ${matched.score})` });
+    const risk = RISK[s.category] || 2;
+    totalRisk += risk;
+    const entry = `${s.name} (${s.category})`;
+    if (risk >= 4) byRisk.high.push(entry);
+    else if (risk >= 2) byRisk.medium.push(entry);
+    else byRisk.low.push(entry);
   });
 
-  let overall = "low";
-  if (totalRisk > 150) overall = "high";
-  else if (totalRisk > 70) overall = "medium";
-  else if (svcs.length > 5) overall = "medium";
-
-  const score = svcs.length === 0 ? 100 : totalRisk > 200 ? 30 : totalRisk > 100 ? 50 : totalRisk > 50 ? 70 : 90;
+  const level = totalRisk > 20 ? "high" : totalRisk > 10 ? "medium" : "low";
+  const score = totalRisk > 25 ? 20 : totalRisk > 15 ? 40 : totalRisk > 8 ? 60 : totalRisk > 0 ? 80 : 95;
   return {
     score,
-    passed: score >= 70,
-    findings,
-    recommendations: totalRisk > 100 ? ["Reduce third-party dependencies", "Consider self-hosting for analytics/CDN"] : [],
-    detail: { totalServices: svcs.length, totalRisk, overallRisk: overall },
+    passed: score >= 65,
+    findings: [
+      svcs.length > 0 && `${svcs.length} third-party services — each is a trust boundary and supply-chain risk`,
+      byRisk.high.length > 0 && `${byRisk.high.length} high-risk services (ads/trackers) — privacy & security concern`,
+    ].filter(Boolean),
+    recommendations: [
+      byRisk.high.length > 0 && "Audit high-risk third parties — can they be replaced or removed?",
+      svcs.length > 8 && "Consider reducing third-party dependencies to minimize attack surface",
+    ].filter(Boolean),
+    detail: { totalRisk, level, totalServices: svcs.length, byRisk },
   };
 }
 
-/* ──────────────────────────────────────────────
-   ENGINE 12 — Subresource Integrity Check
-   ────────────────────────────────────────────── */
+// ══════════════════════════════════════════════
+// ENGINE 12 — Subresource Integrity (SRI)
+// ══════════════════════════════════════════════
 function engineSRI(meta) {
-  const pages = crawlPages(meta);
-  const findings = [];
-  let totalExternalScripts = 0;
-  let withIntegrity = 0;
-  let withoutIntegrity = 0;
-  let totalExternalLinks = 0;
-  let linksWithIntegrity = 0;
-  let linksWithoutIntegrity = 0;
+  const pages = getHTML(meta);
+  let withSRI = 0, withoutSRI = 0;
   const withoutExamples = [];
 
   pages.forEach((p) => {
-    const html = p.html || "";
-    const baseUrl = p.url || meta?.targetUrl || "";
-
-    const scriptTags = html.match(/<script\b[^>]*>/gi) || [];
-    scriptTags.forEach((tag) => {
-      const src = extractAttr(tag, "src");
-      if (!src) return;
-      try {
-        const domain = new URL(src, baseUrl).hostname;
-        const baseDomain = baseUrl ? parseDomain(baseUrl) : "";
-        if (domain && domain !== baseDomain && !src.startsWith("/") && !src.startsWith(".")) {
-          totalExternalScripts++;
-          if (/\bintegrity\s*=/i.test(tag)) withIntegrity++;
-          else {
-            withoutIntegrity++;
-            if (withoutExamples.length < 3) withoutExamples.push(src);
-          }
+    const doc = parseHTML(p.html);
+    if (!doc) return;
+    const scripts = doc.querySelectorAll("script[src]");
+    const links = doc.querySelectorAll("link[rel=stylesheet][href]");
+    [...scripts, ...links].forEach((el) => {
+      const src = el.getAttribute("src") || el.getAttribute("href") || "";
+      if (!src.includes(meta?.host || "localhost") && src.startsWith("http")) {
+        if (el.hasAttribute("integrity")) withSRI++;
+        else {
+          withoutSRI++;
+          if (withoutExamples.length < 10) withoutExamples.push(src);
         }
-      } catch { }
-    });
-
-    const linkTags = html.match(/<link\b[^>]*>/gi) || [];
-    linkTags.forEach((tag) => {
-      const href = extractAttr(tag, "href");
-      const rel = extractAttr(tag, "rel") || "";
-      if (!href || !/(stylesheet|preload|modulepreload)/i.test(rel)) return;
-      try {
-        const domain = new URL(href, baseUrl).hostname;
-        const baseDomain = baseUrl ? parseDomain(baseUrl) : "";
-        if (domain && domain !== baseDomain && !href.startsWith("/") && !href.startsWith(".")) {
-          totalExternalLinks++;
-          if (/\bintegrity\s*=/i.test(tag)) linksWithIntegrity++;
-          else {
-            linksWithoutIntegrity++;
-            if (withoutExamples.length < 5) withoutExamples.push(href);
-          }
-        }
-      } catch { }
+      }
     });
   });
 
-  const totalMissing = withoutIntegrity + linksWithoutIntegrity;
-  const totalExternal = totalExternalScripts + totalExternalLinks;
-
-  if (totalMissing > 0)
-    findings.push({ type: "missing-sri", count: totalMissing, detail: `${totalMissing} external ${totalExternalScripts > 0 ? "scripts" : "resources"} lack integrity attribute` });
-
-  const score = totalExternal === 0 ? 100 : totalMissing === 0 ? 100 : totalMissing > 5 ? 30 : totalMissing > 2 ? 55 : 70;
+  const total = withSRI + withoutSRI;
+  const score = total === 0 ? 100 : withoutSRI === 0 ? 100 : withSRI / total > 0.5 ? 60 : 25;
   return {
     score,
-    passed: score >= 70,
-    findings,
-    recommendations: totalMissing > 0 ? ["Add integrity=\"sha384-...\" to external <script> and <link> tags for security"] : [],
-    detail: { totalExternalScripts, withIntegrity, withoutIntegrity, totalExternalLinks, linksWithIntegrity, linksWithoutIntegrity, withoutExamples },
+    passed: score >= 65,
+    findings: [
+      total > 0 && withoutSRI > 0 && `${withoutSRI}/${total} external resources missing SRI hashes — vulnerable to CDN compromise`,
+      total === 0 && "No external CDN resources detected — SRI not needed",
+    ].filter(Boolean),
+    recommendations: [
+      withoutSRI > 0 && "Add integrity hashes to external script/link tags using SRI",
+      withoutSRI > 0 && "Generate hashes: openssl dgst -sha384 -binary file.js | openssl base64 -A",
+    ].filter(Boolean),
+    detail: { withSRI, withoutSRI, total, withoutExamples },
   };
 }
 
-/* ──────────────────────────────────────────────
-   ENGINE 13 — Web Vitals Estimate
-   ────────────────────────────────────────────── */
+// ══════════════════════════════════════════════
+// ENGINE 13 — Web Vitals Estimator
+// ══════════════════════════════════════════════
 function engineWebVitals(meta) {
-  const pages = crawlPages(meta);
-  const findings = [];
-
-  let totalScripts = 0;
-  let totalStylesheets = 0;
-  let largestImage = 0;
-  let largestVideo = 0;
+  const pages = getHTML(meta);
+  let renderBlocking = 0, largestImageEstimate = 0, totalScripts = 0, totalCSS = 0;
 
   pages.forEach((p) => {
-    const html = p.html || "";
-    totalScripts += (html.match(/<script\b/gi) || []).length;
-    totalStylesheets += (html.match(/<link\b[^>]*stylesheet/gi) || []).length;
+    const doc = parseHTML(p.html);
+    if (!doc) return;
+    renderBlocking += doc.querySelectorAll("link[rel=stylesheet]").length;
+    totalScripts += doc.querySelectorAll("script[src]").length;
+    totalCSS += doc.querySelectorAll("link[rel=stylesheet], style").length;
 
-    const imgs = html.match(/<img\b[^>]*>/gi) || [];
+    const imgs = doc.querySelectorAll("img");
     imgs.forEach((img) => {
-      const w = extractAttr(img, "width");
-      const h = extractAttr(img, "height");
-      if (w && h) {
-        const area = parseInt(w) * parseInt(h);
-        if (area > largestImage) largestImage = area;
-      }
-    });
-    const vids = html.match(/<video\b[^>]*>/gi) || [];
-    vids.forEach((vid) => {
-      const w = extractAttr(vid, "width");
-      const h = extractAttr(vid, "height");
-      if (w && h) {
-        const area = parseInt(w) * parseInt(h);
-        if (area > largestVideo) largestVideo = area;
-      }
+      const w = parseInt(img.getAttribute("width") || "0");
+      const h = parseInt(img.getAttribute("height") || "0");
+      if (w * h > largestImageEstimate) largestImageEstimate = w * h;
     });
   });
 
-  const renderBlocking = totalScripts + totalStylesheets;
-  let fcpEst = renderBlocking > 30 ? "2.5+ s" : renderBlocking > 15 ? "1.5–2.5 s" : renderBlocking > 5 ? "0.8–1.5 s" : "< 0.8 s";
-  let lcpEst = largestImage > 500000 ? "3.0+ s" : largestImage > 100000 ? "2.0–3.0 s" : largestVideo > 500000 ? "3.0+ s" : "< 2.0 s";
-  let tbtEst = totalScripts > 30 ? "600+ ms" : totalScripts > 15 ? "200–600 ms" : totalScripts > 5 ? "50–200 ms" : "< 50 ms";
+  const fcp = renderBlocking > 5 ? "slow" : renderBlocking > 2 ? "moderate" : "good";
+  const lcp = largestImageEstimate > 500000 ? "slow" : largestImageEstimate > 100000 ? "moderate" : "good";
+  const tbt = totalScripts > 10 ? "slow" : totalScripts > 5 ? "moderate" : "good";
 
-  const fcpColor = renderBlocking > 15 ? "var(--red)" : renderBlocking > 5 ? "var(--amber)" : "var(--green)";
-  const lcpColor = largestImage > 100000 ? "var(--red)" : largestImage > 50000 ? "var(--amber)" : "var(--green)";
-  const tbtColor = totalScripts > 15 ? "var(--red)" : totalScripts > 5 ? "var(--amber)" : "var(--green)";
-
-  const fcpScore = renderBlocking > 15 ? 30 : renderBlocking > 5 ? 65 : 95;
-  const lcpScore = largestImage > 100000 ? 30 : largestImage > 50000 ? 60 : 95;
-  const tbtScore = totalScripts > 15 ? 30 : totalScripts > 5 ? 60 : 95;
-  const score = Math.round((fcpScore + lcpScore + tbtScore) / 3);
-
-  findings.push(
-    { metric: "FCP", estimate: fcpEst, color: fcpColor, detail: `First Contentful Paint ~ ${fcpEst} (${renderBlocking} render-blocking resources)` },
-    { metric: "LCP", estimate: lcpEst, color: lcpColor, detail: `Largest Contentful Paint ~ ${lcpEst} (largest image: ${largestImage.toLocaleString()}px area)` },
-    { metric: "TBT", estimate: tbtEst, color: tbtColor, detail: `Total Blocking Time ~ ${tbtEst} (${totalScripts} script tags)` },
-  );
-
+  const issues = [fcp === "slow" && 1, lcp === "slow" && 1, tbt === "slow" && 1].filter(Boolean).length;
+  const score = issues >= 3 ? 20 : issues >= 2 ? 40 : issues >= 1 ? 60 : 90;
   return {
     score,
-    passed: score >= 70,
-    findings,
-    recommendations: renderBlocking > 15 ? ["Defer non-critical scripts and stylesheets to improve FCP"] : [],
-    detail: { fcpEst, lcpEst, tbtEst, renderBlocking, totalScripts, largestImage, largestVideo, fcpColor, lcpColor, tbtColor },
+    passed: score >= 65,
+    findings: [
+      { metric: "FCP", estimate: fcp, color: fcp === "good" ? "var(--green)" : fcp === "moderate" ? "var(--amber)" : "var(--red)", detail: `${renderBlocking} render-blocking resources` },
+      { metric: "LCP", estimate: lcp, color: lcp === "good" ? "var(--green)" : lcp === "moderate" ? "var(--amber)" : "var(--red)", detail: largestImageEstimate > 0 ? `largest image ~${Math.round(largestImageEstimate / 1000)}K pixels` : "no images" },
+      { metric: "TBT", estimate: tbt, color: tbt === "good" ? "var(--green)" : tbt === "moderate" ? "var(--amber)" : "var(--red)", detail: `${totalScripts} scripts` },
+    ],
+    recommendations: [
+      renderBlocking > 2 && "Reduce render-blocking stylesheets — inline critical CSS, defer the rest",
+      totalScripts > 5 && "Defer non-critical scripts with async/defer attributes",
+    ].filter(Boolean),
+    detail: { renderBlocking, totalScripts, totalCSS, largestImageEstimate, fcp, lcp, tbt },
   };
 }
 
-/* ──────────────────────────────────────────────
-   ENGINE 14 — Accessibility Quick Audit
-   ────────────────────────────────────────────── */
+// ══════════════════════════════════════════════
+// ENGINE 14 — Accessibility Quick Audit
+// ══════════════════════════════════════════════
 function engineAccessibility(meta) {
-  const pages = crawlPages(meta);
-  const findings = [];
-  let totalImgs = 0;
-  let missingAlt = 0;
-  let totalInputs = 0;
-  let inputsWithoutLabel = 0;
-  let emptyButtons = 0;
-  let totalButtons = 0;
-  let hasRole = 0;
-  let colorWarnings = 0;
-
-  const badColorCombos = [
-    ["#ffffff"],
-    ["#fff"],
-    ["#808080"],
-    ["#999999"],
-    ["#cccccc"],
-  ];
+  const pages = getHTML(meta);
+  let missingAlt = 0, emptyButtons = 0, missingLabels = 0, totalImgs = 0, totalButtons = 0, totalInputs = 0;
+  let hasLang = false, ariaRoles = 0;
 
   pages.forEach((p) => {
-    const html = p.html || "";
-    const imgTags = html.match(/<img\b[^>]*>/gi) || [];
-    imgTags.forEach((tag) => {
-      totalImgs++;
-      const alt = extractAttr(tag, "alt");
-      if (alt === null || alt === "") missingAlt++;
-    });
+    const doc = parseHTML(p.html);
+    if (!doc) return;
+    if (doc.documentElement.hasAttribute("lang")) hasLang = true;
 
-    const inputTags = html.match(/<input\b[^>]*>/gi) || [];
-    totalInputs += inputTags.length;
-    inputTags.forEach((tag) => {
-      const type = extractAttr(tag, "type") || "text";
-      if (/(submit|button|hidden|image|reset)/i.test(type)) return;
-      const id = extractAttr(tag, "id");
-      if (id) {
-        const labelRe = new RegExp(`<label\\b[^>]*for\\s*=\\s*["']${id}["']`, "i");
-        if (!labelRe.test(html)) inputsWithoutLabel++;
-      } else {
-        const aria = extractAttr(tag, "aria-label") || extractAttr(tag, "aria-labelledby");
-        if (!aria) inputsWithoutLabel++;
-      }
-    });
-
-    const btnTags = html.match(/<button\b[^>]*>[\s\S]*?<\/button>/gi) || [];
-    totalButtons += btnTags.length;
-    btnTags.forEach((tag) => {
-      const inner = tag.replace(/<[^>]+>/g, "").trim();
-      if (!inner) emptyButtons++;
-    });
-
-    const roleTags = html.match(/\brole\s*=\s*["']/gi) || [];
-    hasRole += roleTags.length;
-
-    badColorCombos.forEach((colors) => {
-      colors.forEach((c) => {
-        const re = new RegExp(`color\\s*:\\s*${c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*;`, "gi");
-        if (re.test(html)) colorWarnings++;
-      });
-    });
+    doc.querySelectorAll("img").forEach((img) => { totalImgs++; if (!img.getAttribute("alt") && img.getAttribute("role") !== "presentation") missingAlt++; });
+    doc.querySelectorAll("button").forEach((btn) => { totalButtons++; if (!btn.textContent?.trim() && !btn.getAttribute("aria-label") && !btn.querySelector("img[alt]")) emptyButtons++; });
+    doc.querySelectorAll("input:not([type=hidden])").forEach((inp) => { totalInputs++; const id = inp.id; if (id && !doc.querySelector(`label[for="${id}"]`) && !inp.getAttribute("aria-label")) missingLabels++; });
+    doc.querySelectorAll("[role]").forEach(() => ariaRoles++);
   });
 
-  if (missingAlt > 0) findings.push({ type: "alt-text", count: missingAlt, total: totalImgs, detail: `${missingAlt}/${totalImgs} images missing alt text` });
-  if (inputsWithoutLabel > 0) findings.push({ type: "input-labels", count: inputsWithoutLabel, total: totalInputs, detail: `${inputsWithoutLabel}/${totalInputs} inputs may lack associated labels` });
-  if (emptyButtons > 0) findings.push({ type: "empty-buttons", count: emptyButtons, detail: `${emptyButtons} empty <button> elements — no accessible name` });
-  if (colorWarnings > 0) findings.push({ type: "color-contrast", count: colorWarnings, detail: `${colorWarnings} potential low-contrast color combinations detected` });
-  if (hasRole > 0) findings.push({ type: "roles", count: hasRole, detail: `${hasRole} ARIA role attributes used (good)` });
+  const issues = [];
+  if (totalImgs > 0 && missingAlt / totalImgs > 0.3) issues.push(`${missingAlt}/${totalImgs} images missing alt text`);
+  if (totalButtons > 0 && emptyButtons > 0) issues.push(`${emptyButtons} empty buttons without labels`);
+  if (totalInputs > 0 && missingLabels > 0) issues.push(`${missingLabels} inputs missing associated labels`);
+  if (!hasLang) issues.push("No lang attribute on <html> — screen readers can't detect language");
 
-  let score = 100;
-  if (missingAlt > 0) score -= Math.min(30, missingAlt * 5);
-  if (inputsWithoutLabel > 0) score -= Math.min(25, inputsWithoutLabel * 5);
-  if (emptyButtons > 0) score -= Math.min(20, emptyButtons * 5);
-  if (colorWarnings > 3) score -= Math.min(15, colorWarnings * 3);
-  score = Math.max(0, score + Math.min(10, hasRole));
-
+  const totalIssues = issues.length;
+  const score = totalIssues === 0 ? 100 : totalIssues === 1 ? 70 : totalIssues === 2 ? 45 : 20;
   return {
     score,
-    passed: score >= 70,
-    findings,
-    recommendations: missingAlt > 0 ? ["Add descriptive alt text to all meaningful images"] : [],
-    detail: { totalImgs, missingAlt, totalInputs, inputsWithoutLabel, totalButtons, emptyButtons, hasRole, colorWarnings },
+    passed: score >= 65,
+    findings: issues,
+    recommendations: [
+      missingAlt > 0 && "Add descriptive alt text to all meaningful images",
+      emptyButtons > 0 && "Add aria-label or text content to all buttons",
+      missingLabels > 0 && "Connect inputs to labels using for/id or wrap inputs inside labels",
+      !hasLang && "Add lang attribute: <html lang='en'>",
+    ].filter(Boolean),
+    detail: { missingAlt, emptyButtons, missingLabels, totalImgs, totalButtons, totalInputs, hasLang, ariaRoles },
   };
 }
 
-/* ──────────────────────────────────────────────
-   ENGINE 15 — Link Health Score
-   ────────────────────────────────────────────── */
+// ══════════════════════════════════════════════
+// ENGINE 15 — Link Health & Safety
+// ══════════════════════════════════════════════
 function engineLinkHealth(meta) {
-  const pages = crawlPages(meta);
-  const findings = [];
-  let internalLinks = 0;
-  let externalLinks = 0;
-  let blankNoRel = 0;
-  let nofollowLinks = 0;
-  let mailtoLinks = 0;
-  let telLinks = 0;
+  const pages = getHTML(meta);
+  let internal = 0, external = 0, noRel = 0, noFollow = 0, mailto = 0, tel = 0;
+  const host = meta?.host || "";
 
   pages.forEach((p) => {
-    const html = p.html || "";
-    const baseUrl = p.url || meta?.targetUrl || "";
-    const baseDomain = parseDomain(baseUrl);
-
-    const linkTags = html.match(/<a\b[^>]*>/gi) || [];
-    linkTags.forEach((tag) => {
-      const href = extractAttr(tag, "href");
-      if (!href) return;
-      if (/^mailto:/i.test(href)) { mailtoLinks++; return; }
-      if (/^tel:/i.test(href)) { telLinks++; return; }
-
-      const target = extractAttr(tag, "target");
-      const rel = (extractAttr(tag, "rel") || "").toLowerCase();
-
-      try {
-        const domain = new URL(href, baseUrl).hostname;
-        if (domain === baseDomain || href.startsWith("/") || href.startsWith(".") || href.startsWith("#")) {
-          internalLinks++;
-        } else {
-          externalLinks++;
-          if (target === "_blank" && !/noopener/i.test(rel)) {
-            blankNoRel++;
+    const doc = parseHTML(p.html);
+    if (!doc) return;
+    doc.querySelectorAll("a[href]").forEach((a) => {
+      const href = a.getAttribute("href") || "";
+      if (href.startsWith("mailto:")) { mailto++; return; }
+      if (href.startsWith("tel:")) { tel++; return; }
+      if (href.startsWith("http")) {
+        try {
+          const u = new URL(href);
+          if (u.hostname.includes(host) || host.includes(u.hostname.replace(/^www\./, ""))) internal++;
+          else {
+            external++;
+            if (a.getAttribute("target") === "_blank" && !a.getAttribute("rel")?.includes("noopener")) noRel++;
+            if (a.getAttribute("rel")?.includes("nofollow")) noFollow++;
           }
-        }
-      } catch {
-        if (!/^https?:/.test(href)) internalLinks++;
+        } catch { /* bad URL */ }
       }
-
-      if (/nofollow/i.test(rel)) nofollowLinks++;
     });
   });
 
-  if (blankNoRel > 0) findings.push({ type: "blank-noopener", count: blankNoRel, detail: `${blankNoRel} external links with target="_blank" missing rel="noopener"` });
-  findings.push({ type: "counts", detail: `${internalLinks} internal, ${externalLinks} external links` });
+  const issues = [];
+  if (noRel > 0) issues.push(`${noRel} external links with target=_blank missing rel=noopener — tabnapping risk`);
+  if (external > 20) issues.push(`${external} external links — high outbound link density`);
 
-  let score = 100;
-  if (blankNoRel > 5) score -= 30;
-  else if (blankNoRel > 0) score -= 15;
-  if (internalLinks === 0 && externalLinks === 0) score = 50;
-
+  const score = noRel > 10 ? 20 : noRel > 0 ? 45 : external > 30 ? 60 : 95;
   return {
     score,
-    passed: score >= 70,
-    findings,
-    recommendations: blankNoRel > 0 ? ["Add rel=\"noopener noreferrer\" to all target=\"_blank\" links for security"] : [],
-    detail: { internalLinks, externalLinks, blankNoRel, nofollowLinks, mailtoLinks, telLinks },
+    passed: score >= 65,
+    findings: issues.length ? issues : ["Link profile looks healthy"],
+    recommendations: [
+      noRel > 0 && "Add rel='noopener noreferrer' to all target='_blank' links",
+      external > 20 && "Audit external links — each is a trust decision",
+    ].filter(Boolean),
+    detail: { internal, external, noRel, noFollow, mailto, tel, total: internal + external },
   };
 }
 
-/* ──────────────────────────────────────────────
-   ICONS for each engine
-   ────────────────────────────────────────────── */
-const ENGINE_ICONS = [
-  "\uD83D\uDCE6", // 1: JS Bundle
-  "\uD83C\uDFA8", // 2: CSS
-  "\uD83D\uDEE1\uFE0F", // 3: CSP
-  "\uD83D\uDCE7", // 4: Email
-  "\uD83D\uDD10", // 5: Security.txt
-  "\uD83D\uDC74", // 6: Broken Resources
-  "\uD83C\uDFD7\uFE0F", // 7: Semantic HTML
-  "\uD83C\uDFF7\uFE0F", // 8: Meta Tags
-  "\uD83D\uDCCA", // 9: Structured Data
-  "\uD83C\uDF09", // 10: DOM Complexity
-  "\u26A0\uFE0F", // 11: Third-Party Risk
-  "\uD83D\uDD12", // 12: SRI
-  "\u26A1", // 13: Web Vitals
-  "\u267F", // 14: Accessibility
-  "\uD83D\uDD17", // 15: Link Health
+// ══════════════════════════════════════════════
+// ALL ENGINES
+// ══════════════════════════════════════════════
+const ENGINES = [
+  { key: "js", icon: "📦", title: "JS Bundle Analysis", fn: engineJSMaster },
+  { key: "css", icon: "🎨", title: "CSS Quality & Bloat", fn: engineCSSMaster },
+  { key: "csp", icon: "🛡️", title: "Auto CSP Generator", fn: engineCSPMaster },
+  { key: "email", icon: "📧", title: "Email Security (SPF/DKIM/DMARC)", fn: engineEmailMaster },
+  { key: "sectxt", icon: "📋", title: "Security.txt Generator", fn: engineSecurityTxtMaster },
+  { key: "broken", icon: "🔗", title: "Broken Resource Hunter", fn: engineBrokenResources },
+  { key: "semantic", icon: "🏗️", title: "Semantic HTML Audit", fn: engineSemanticHTML },
+  { key: "meta", icon: "🏷️", title: "Meta Tag Completeness", fn: engineMetaTagsMaster },
+  { key: "schema", icon: "📊", title: "Structured Data (JSON-LD)", fn: engineStructuredData },
+  { key: "dom", icon: "🌲", title: "DOM Complexity Score", fn: engineDOMComplexity },
+  { key: "thirdparty", icon: "🔌", title: "Third-Party Risk Exposure", fn: engineThirdPartyRisk },
+  { key: "sri", icon: "🔐", title: "Subresource Integrity (SRI)", fn: engineSRI },
+  { key: "vitals", icon: "⚡", title: "Web Vitals Estimator", fn: engineWebVitals },
+  { key: "a11y", icon: "♿", title: "Accessibility Quick Audit", fn: engineAccessibility },
+  { key: "links", icon: "🌐", title: "Link Health & Safety", fn: engineLinkHealth },
 ];
 
-const ENGINE_TITLES = [
-  "JS Bundle Analyzer",
-  "CSS Selector Complexity",
-  "Auto-Generated CSP Policy",
-  "Email Security Config",
-  "Security.txt Generator",
-  "Broken Resource Detector",
-  "Semantic HTML Auditor",
-  "Meta Tag Completeness",
-  "Structured Data Parser",
-  "DOM Complexity Score",
-  "Third-Party Risk Score",
-  "Subresource Integrity Check",
-  "Web Vitals Estimate",
-  "Accessibility Quick Audit",
-  "Link Health Score",
-];
-
-/* ──────────────────────────────────────────────
-   RENDER HELPERS
-   ────────────────────────────────────────────── */
-function Badge({ label, color }) {
-  return (
-    <span style={{
-      display: "inline-block",
-      fontSize: 9,
-      fontWeight: 700,
-      letterSpacing: 1,
-      padding: "1px 7px",
-      border: `1px solid ${color}`,
-      color,
-      marginLeft: 8,
-    }}>
-      {label}
-    </span>
-  );
-}
-
-function TrafficLight({ color }) {
-  return (
-    <span style={{
-      display: "inline-block",
-      width: 8,
-      height: 8,
-      borderRadius: "50%",
-      background: color,
-      marginRight: 8,
-      flexShrink: 0,
-    }} />
-  );
-}
-
-function DetailBlock({ label, children }) {
-  return (
-    <div style={{ marginBottom: 10 }}>
-      <div style={{ fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", color: "var(--dim)", marginBottom: 4 }}>{label}</div>
-      <div style={{ fontSize: 12 }}>{children}</div>
-    </div>
-  );
-}
-
-function StatRow({ label, value, color }) {
-  return (
-    <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", fontSize: 12, borderBottom: "1px solid rgba(255,255,255,0.03)" }}>
-      <span style={{ color: "var(--dim)" }}>{label}</span>
-      <span style={{ color: color || "var(--text)", fontWeight: 600 }}>{value}</span>
-    </div>
-  );
-}
-
-/* ──────────────────────────────────────────────
-   MAIN COMPONENT
-   ────────────────────────────────────────────── */
+// ── RENDER ──
 export default function DeepScan({ scan }) {
   const [expanded, setExpanded] = useState({});
+  const meta = scan?.meta || {};
 
-  const engines = useMemo(() => {
-    if (!scan) return [];
-    const meta = scan.meta || {};
-    const findingsArr = scan.findings || [];
+  const results = useMemo(() => ENGINES.map((eng) => {
+    const fn = eng.fn;
+    try { return { ...eng, result: fn.key === "sectxt" ? fn(scan) : fn(meta) }; }
+    catch (e) { return { ...eng, result: { score: 0, passed: false, findings: [e.message], recommendations: [], detail: {} } }; }
+  }), [scan]);
 
-    return [
-      engineJSBundles(meta),
-      engineCSSComplexity(meta),
-      engineCSP(meta),
-      engineEmailSecurity(meta),
-      engineSecurityTxt(meta, findingsArr),
-      engineBrokenResources(meta),
-      engineSemanticHTML(meta),
-      engineMetaTags(meta),
-      engineStructuredData(meta),
-      engineDOMComplexity(meta),
-      engineThirdPartyRisk(meta),
-      engineSRI(meta),
-      engineWebVitals(meta),
-      engineAccessibility(meta),
-      engineLinkHealth(meta),
-    ];
-  }, [scan]);
-
-  const toggle = (i) => setExpanded((prev) => ({ ...prev, [i]: !prev[i] }));
-
-  if (!scan) {
-    return (
-      <div className="console mt">
-        <div className="console-title">
-          <span className="traffic"><span className="t g" /><span className="t a" /><span className="t r" /></span>
-          <span>DEEP SCAN — no scan data</span>
-        </div>
-        <div className="console-body small dim">No scan data available to analyze.</div>
-      </div>
-    );
-  }
-
-  const passedCount = engines.filter((e) => e.passed).length;
-  const warnCount = engines.filter((e) => !e.passed && e.score >= 30).length;
-  const critCount = engines.filter((e) => e.score < 30).length;
+  const passed = results.filter((r) => r.result.passed).length;
+  const critCount = results.filter((r) => r.result.score < 40).length;
+  const warnCount = results.filter((r) => r.result.score >= 40 && r.result.score < 65).length;
 
   return (
     <div className="console mt">
       <div className="console-title">
         <span className="traffic"><span className="t g" /><span className="t a" /><span className="t r" /></span>
         <span>DEEP SCAN — 15 CLIENT-SIDE ENGINES</span>
+        <span className="dim" style={{ fontSize: 11, marginLeft: "auto" }}>
+          {passed}/15 passed{crtCount > 0 ? ` · ${critCount} critical` : ""}{warnCount > 0 ? ` · ${warnCount} warnings` : ""}
+        </span>
       </div>
       <div className="console-body">
-        <div style={{ marginBottom: 16 }}>
-          <div style={{ fontSize: 11, color: "var(--dim)", letterSpacing: 1, marginBottom: 4 }}>
-            Pure JavaScript analysis · No APIs · No servers
-          </div>
-          <div style={{ display: "flex", gap: 16, fontSize: 12 }}>
-            <span style={{ color: "var(--green)" }}>{passedCount}/15 passed</span>
-            <span style={{ color: "var(--amber)" }}>{warnCount} warnings</span>
-            <span style={{ color: "var(--red)" }}>{critCount} critical</span>
-          </div>
-          <div style={{ marginTop: 4, color: "var(--dim)", fontSize: 11 }}>
-            Target: {scan.targetUrl || "—"}
-          </div>
+        <div className="small dim" style={{ marginBottom: 14 }}>
+          Pure JavaScript analysis · No external APIs · Runs entirely in your browser using real DOM parsing
         </div>
 
-        <div style={{ maxHeight: "70vh", overflowY: "auto" }}>
-          {engines.map((engine, i) => {
-            const { color: badgeColor, label: badgeLabel } = scoreBadge(engine.score);
-            const isOpen = expanded[i] === true;
-            return (
-              <div key={i} style={{
-                marginBottom: 4,
-                border: `1px solid ${isOpen ? "var(--line)" : "transparent"}`,
-                background: isOpen ? "rgba(255,255,255,0.015)" : "transparent",
+        {results.map((eng) => {
+          const r = eng.result;
+          const b = badge(r.score);
+          const isOpen = expanded[eng.key];
+
+          return (
+            <div key={eng.key} style={{ marginBottom: 6, border: `1px solid ${isOpen ? b.color : "var(--line)"}`, borderRadius: 6, overflow: "hidden", transition: "border-color 0.2s" }}>
+              <div onClick={() => setExpanded(p => ({ ...p, [eng.key]: !p[eng.key] }))} style={{
+                padding: "10px 14px", cursor: "pointer", display: "flex", alignItems: "center", gap: 10,
+                background: isOpen ? "var(--panel-2)" : "transparent",
               }}>
-                {/* Collapsed header */}
-                <div
-                  onClick={() => toggle(i)}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    padding: "10px 12px",
-                    cursor: "pointer",
-                    userSelect: "none",
-                    gap: 10,
-                  }}
-                >
-                  <span style={{ fontSize: 10, color: "var(--dim)", minWidth: 20, textAlign: "center" }}>
-                    {isOpen ? "\u25BC" : "\u25B6"}
-                  </span>
-                  <span style={{ fontSize: 15, flexShrink: 0 }}>{ENGINE_ICONS[i]}</span>
-                  <span style={{ fontSize: 12.5, fontWeight: 600, flex: 1 }}>
-                    {ENGINE_TITLES[i]}
-                  </span>
-                  <Badge label={badgeLabel} color={badgeColor} />
-                  <span style={{ fontSize: 16, fontWeight: 700, color: scoreColor(engine.score), minWidth: 36, textAlign: "right" }}>
-                    {engine.score}
-                  </span>
-                </div>
-
-                {/* Expanded body */}
-                {isOpen && (
-                  <div style={{ padding: "8px 12px 14px 54px", borderTop: "1px dashed var(--line)" }}>
-                    {/* Score bar */}
-                    <div style={{ height: 4, background: "rgba(255,255,255,0.05)", borderRadius: 2, marginBottom: 12, overflow: "hidden" }}>
-                      <div style={{ height: "100%", width: `${engine.score}%`, background: scoreColor(engine.score), borderRadius: 2, transition: "width 0.4s ease" }} />
-                    </div>
-
-                    {/* Stats grid */}
-                    {engine.detail && typeof engine.detail === "object" && (
-                      <div style={{ marginBottom: 12 }}>
-                        <div style={{
-                          display: "grid",
-                          gridTemplateColumns: "1fr 1fr",
-                          gap: "2px 16px",
-                        }}>
-                          {Object.entries(engine.detail)
-                            .filter(([k]) => !["brokenExamples", "withoutExamples", "schemaTypes", "schemaCount", "libVersions", "present", "missing", "cspString", "securityTxt", "contact", "expires", "overallRisk", "fcpColor", "lcpColor", "tbtColor"].includes(k))
-                            .map(([k, v]) => (
-                              <StatRow key={k} label={k.replace(/([A-Z])/g, " $1").replace(/^./, (s) => s.toUpperCase())} value={typeof v === "boolean" ? (v ? "Yes" : "No") : String(v ?? "—")} />
-                            ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Lib versions */}
-                    {engine.detail?.libVersions?.length > 0 && (
-                      <DetailBlock label="Detected Libraries">
-                        {engine.detail.libVersions.map((lib, li) => (
-                          <span key={li} style={{ display: "inline-block", padding: "2px 8px", margin: "2px 4px 2px 0", background: "rgba(56,225,255,0.08)", border: "1px solid rgba(56,225,255,0.2)", borderRadius: 3, fontSize: 11, color: "var(--cyan)" }}>
-                            {lib}
-                          </span>
-                        ))}
-                      </DetailBlock>
-                    )}
-
-                    {/* CSP string */}
-                    {engine.detail?.cspString && (
-                      <DetailBlock label="Recommended Content-Security-Policy">
-                        <pre style={{
-                          fontSize: 11,
-                          color: "var(--cyan)",
-                          background: "rgba(0,0,0,0.25)",
-                          padding: "10px",
-                          overflowX: "auto",
-                          whiteSpace: "pre-wrap",
-                          wordBreak: "break-all",
-                          maxHeight: 120,
-                          overflowY: "auto",
-                        }}>
-                          {engine.detail.cspString}
-                        </pre>
-                      </DetailBlock>
-                    )}
-
-                    {/* Security.txt */}
-                    {engine.detail?.securityTxt && (
-                      <DetailBlock label="Generated security.txt">
-                        <pre style={{
-                          fontSize: 11,
-                          color: "var(--green)",
-                          background: "rgba(0,0,0,0.25)",
-                          padding: "10px",
-                          overflowX: "auto",
-                          whiteSpace: "pre-wrap",
-                          maxHeight: 160,
-                          overflowY: "auto",
-                        }}>
-                          {engine.detail.securityTxt}
-                        </pre>
-                      </DetailBlock>
-                    )}
-
-                    {/* Broken examples */}
-                    {engine.detail?.brokenExamples?.length > 0 && (
-                      <DetailBlock label="Broken Resource Examples">
-                        {engine.detail.brokenExamples.map((ex, ei) => (
-                          <div key={ei} style={{ fontSize: 11, color: "var(--red)", padding: "2px 0", wordBreak: "break-all" }}>
-                            [{ex.status}] {ex.url}
-                          </div>
-                        ))}
-                      </DetailBlock>
-                    )}
-
-                    {/* SRI without examples */}
-                    {engine.detail?.withoutExamples?.length > 0 && (
-                      <DetailBlock label="External Resources Without SRI">
-                        {engine.detail.withoutExamples.map((ex, ei) => (
-                          <div key={ei} style={{ fontSize: 11, color: "var(--amber)", padding: "2px 0", wordBreak: "break-all" }}>
-                            {ex}
-                          </div>
-                        ))}
-                      </DetailBlock>
-                    )}
-
-                    {/* Web Vitals traffic lights */}
-                    {engine.findings?.some((f) => f.metric) && (
-                      <DetailBlock label="Estimated Metrics">
-                        {engine.findings.filter((f) => f.metric).map((f, fi) => (
-                          <div key={fi} style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 0", fontSize: 12 }}>
-                            <TrafficLight color={f.color} />
-                            <span style={{ fontWeight: 600, minWidth: 40 }}>{f.metric}</span>
-                            <span style={{ color: f.color }}>{f.estimate}</span>
-                            <span style={{ color: "var(--dim)", fontSize: 10, marginLeft: "auto" }}>{f.detail}</span>
-                          </div>
-                        ))}
-                      </DetailBlock>
-                    )}
-
-                    {/* Findings list */}
-                    {engine.findings?.filter((f) => !f.metric).length > 0 && (
-                      <DetailBlock label="Findings">
-                        {engine.findings.filter((f) => !f.metric).map((f, fi) => (
-                          <div key={fi} style={{ fontSize: 11.5, padding: "3px 0", borderBottom: "1px solid rgba(255,255,255,0.02)", color: f.type === "none" ? "var(--dim)" : f.type === "missing-sri" || f.type === "missing-spf" || f.type === "missing-dkim" || f.type === "missing-dmarc" ? "var(--red)" : "var(--text)" }}>
-                            {f.detail || f.type}
-                          </div>
-                        ))}
-                      </DetailBlock>
-                    )}
-
-                    {/* Structured Data schema types */}
-                    {engine.detail?.schemaTypes?.length > 0 && (
-                      <DetailBlock label="Schema Types Detected">
-                        {engine.detail.schemaTypes.map((t, si) => (
-                          <span key={si} style={{ display: "inline-block", padding: "2px 8px", margin: "2px 4px 2px 0", background: "rgba(255,176,32,0.08)", border: "1px solid rgba(255,176,32,0.2)", borderRadius: 3, fontSize: 11, color: "var(--amber)" }}>
-                            {t} ({engine.detail.schemaCount[t]})
-                          </span>
-                        ))}
-                      </DetailBlock>
-                    )}
-
-                    {/* Recommendations */}
-                    {engine.recommendations?.length > 0 && (
-                      <DetailBlock label={`Recommendations (${engine.recommendations.length})`}>
-                        {engine.recommendations.map((rec, ri) => (
-                          <div key={ri} style={{ fontSize: 11.5, color: "var(--cyan)", padding: "3px 0", borderBottom: "1px solid rgba(255,255,255,0.02)" }}>
-                            {typeof rec === "string" ? "\u2192 " + rec : rec}
-                          </div>
-                        ))}
-                      </DetailBlock>
-                    )}
-
-                    {/* Email specific detail */}
-                    {engine.detail?.spf !== undefined && (
-                      <DetailBlock label="Email Security Status">
-                        <StatRow label="SPF" value={engine.detail.spf ? "Present" : "Missing"} color={engine.detail.spf ? "var(--green)" : "var(--red)"} />
-                        <StatRow label="DKIM" value={engine.detail.dkim ? "Present" : "Missing"} color={engine.detail.dkim ? "var(--green)" : "var(--red)"} />
-                        <StatRow label="DMARC" value={engine.detail.dmarc ? "Present" : "Missing"} color={engine.detail.dmarc ? "var(--green)" : "var(--red)"} />
-                      </DetailBlock>
-                    )}
-
-                    {/* Meta tag presence */}
-                    {engine.detail?.present && (
-                      <DetailBlock label="Meta Tags Present">
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: "3px 6px" }}>
-                          {engine.detail.present.map((t, ti) => (
-                            <span key={ti} style={{ fontSize: 10, color: "var(--green)", padding: "1px 6px", border: "1px solid rgba(51,255,161,0.3)" }}>
-                              {t}
-                            </span>
-                          ))}
-                          {engine.detail.missing?.map((t, ti) => (
-                            <span key={"m" + ti} style={{ fontSize: 10, color: "var(--red)", padding: "1px 6px", border: "1px solid rgba(255,77,94,0.3)" }}>
-                              {t}
-                            </span>
-                          ))}
-                        </div>
-                      </DetailBlock>
-                    )}
-
-                    {/* Third-party risk overall */}
-                    {engine.detail?.overallRisk && (
-                      <DetailBlock label="Overall Risk">
-                        <span style={{
-                          fontSize: 12,
-                          fontWeight: 700,
-                          color: engine.detail.overallRisk === "high" ? "var(--red)" : engine.detail.overallRisk === "medium" ? "var(--amber)" : "var(--green)",
-                          textTransform: "uppercase",
-                        }}>
-                          {engine.detail.overallRisk} ({engine.detail.totalRisk} risk score)
-                        </span>
-                      </DetailBlock>
-                    )}
-                  </div>
-                )}
+                <span style={{ fontSize: 18 }}>{eng.icon}</span>
+                <span style={{ fontWeight: 600, fontSize: 13, flex: 1 }}>{eng.title}</span>
+                <span style={{
+                  fontSize: 10, fontWeight: 700, letterSpacing: 1, padding: "2px 8px", borderRadius: 4,
+                  background: b.color + "18", color: b.color, border: `1px solid ${b.color}44`,
+                }}>{b.label} {r.score}</span>
+                <span style={{ color: "var(--dim)", fontSize: 12, transition: "transform 0.2s", transform: isOpen ? "rotate(90deg)" : "rotate(0)" }}>▶</span>
               </div>
-            );
-          })}
-        </div>
 
-        {/* Bottom summary */}
+              {isOpen && (
+                <div style={{ padding: "10px 14px 14px", borderTop: "1px solid var(--line)", background: "rgba(0,0,0,0.1)" }}>
+                  {/* Score bar */}
+                  <div style={{ marginBottom: 10 }}>
+                    <div style={{ height: 4, background: "var(--panel-2)", borderRadius: 2, overflow: "hidden" }}>
+                      <div style={{ height: "100%", width: `${r.score}%`, background: b.color, borderRadius: 2, transition: "width 0.5s ease" }} />
+                    </div>
+                  </div>
+
+                  {/* Findings */}
+                  {r.findings?.filter(Boolean).length > 0 && (
+                    <div style={{ marginBottom: 10 }}>
+                      <div style={{ fontSize: 10, color: "var(--dim)", letterSpacing: 1, marginBottom: 4, textTransform: "uppercase" }}>Findings</div>
+                      {r.findings.filter(Boolean).map((f, i) => (
+                        <div key={i} style={{ fontSize: 12, padding: "3px 0", borderBottom: "1px solid rgba(255,255,255,0.03)", color: typeof f === "string" ? "var(--fg)" : f.metric ? f.color : "var(--fg)" }}>
+                          {typeof f === "string" ? f : f.metric ? (
+                            <span style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                              <span style={{ width: 8, height: 8, borderRadius: "50%", background: f.color, display: "inline-block", flexShrink: 0 }} />
+                              <b style={{ minWidth: 36 }}>{f.metric}</b> {f.estimate} <span className="dim" style={{ fontSize: 10 }}>{f.detail}</span>
+                            </span>
+                          ) : f.detail || f.type}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Recommendations */}
+                  {r.recommendations?.filter(Boolean).length > 0 && (
+                    <div style={{ marginBottom: 10 }}>
+                      <div style={{ fontSize: 10, color: "var(--cyan)", letterSpacing: 1, marginBottom: 4, textTransform: "uppercase" }}>How to fix</div>
+                      {r.recommendations.filter(Boolean).map((rec, i) => (
+                        <div key={i} style={{ fontSize: 11.5, color: "var(--cyan)", padding: "3px 0", borderBottom: "1px solid rgba(255,255,255,0.03)" }}>
+                          → {rec}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* CSP String */}
+                  {r.detail?.cspString && (
+                    <div style={{ marginBottom: 10 }}>
+                      <div style={{ fontSize: 10, color: "var(--dim)", letterSpacing: 1, marginBottom: 4, textTransform: "uppercase" }}>Content-Security-Policy</div>
+                      <pre style={{ fontSize: 10, color: "var(--green)", background: "rgba(0,0,0,0.3)", padding: "10px", borderRadius: 4, overflowX: "auto", whiteSpace: "pre-wrap", wordBreak: "break-all", maxHeight: 100, overflowY: "auto" }}>
+                        {r.detail.cspString}
+                      </pre>
+                    </div>
+                  )}
+
+                  {/* Security.txt */}
+                  {r.detail?.securityTxt && (
+                    <div style={{ marginBottom: 10 }}>
+                      <div style={{ fontSize: 10, color: "var(--dim)", letterSpacing: 1, marginBottom: 4, textTransform: "uppercase" }}>security.txt</div>
+                      <pre style={{ fontSize: 10, color: "var(--green)", background: "rgba(0,0,0,0.3)", padding: "10px", borderRadius: 4, overflowX: "auto", whiteSpace: "pre-wrap", maxHeight: 100, overflowY: "auto" }}>
+                        {r.detail.securityTxt}
+                      </pre>
+                    </div>
+                  )}
+
+                  {/* Email records */}
+                  {r.detail?.records && (
+                    <div style={{ marginBottom: 10 }}>
+                      <div style={{ fontSize: 10, color: "var(--dim)", letterSpacing: 1, marginBottom: 4, textTransform: "uppercase" }}>DNS Records to Add</div>
+                      {Object.entries(r.detail.records).map(([k, v]) => (
+                        <pre key={k} style={{ fontSize: 10, color: "var(--amber)", background: "rgba(0,0,0,0.3)", padding: "8px", borderRadius: 4, overflowX: "auto", whiteSpace: "pre-wrap", wordBreak: "break-all", marginBottom: 4 }}>
+                          <b>{k}:</b> {v}
+                        </pre>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Stats grid */}
+                  {r.detail && !r.detail.cspString && !r.detail.securityTxt && !r.detail.records && (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 14px", fontSize: 11, marginBottom: 8 }}>
+                      {Object.entries(r.detail).filter(([, v]) => typeof v !== "object" || Array.isArray(v) && v.length <= 3).slice(0, 8).map(([k, v]) => (
+                        <span key={k} style={{ display: "inline-flex", gap: 4 }}>
+                          <span style={{ color: "var(--dim)" }}>{k}:</span>
+                          <b style={{ color: "var(--fg)" }}>{Array.isArray(v) ? v.length : typeof v === "boolean" ? (v ? "yes" : "no") : String(v).slice(0, 60)}</b>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+
         <div style={{
-          marginTop: 16,
-          padding: "12px 14px",
+          marginTop: 14, padding: "10px 14px", fontSize: 13, fontWeight: 700, letterSpacing: 1,
           border: `1px solid ${critCount > 0 ? "var(--red)" : warnCount > 0 ? "var(--amber)" : "var(--green)"}`,
           background: critCount > 0 ? "rgba(255,77,94,0.06)" : warnCount > 0 ? "rgba(255,176,32,0.06)" : "rgba(51,255,161,0.06)",
-          fontSize: 13,
-          fontWeight: 700,
           color: critCount > 0 ? "var(--red)" : warnCount > 0 ? "var(--amber)" : "var(--green)",
-          letterSpacing: 1,
         }}>
-          {critCount > 0
-            ? `${critCount} CRITICAL — immediate attention required`
-            : warnCount > 0
-              ? `${warnCount} warnings — review recommended`
-              : "All 15 engines passed — excellent baseline"}
+          {critCount > 0 ? `${critCount} critical — immediate attention required` : warnCount > 0 ? `${warnCount} warnings — review recommended` : "All 15 engines passed — excellent baseline"}
         </div>
       </div>
     </div>
