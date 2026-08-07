@@ -54,8 +54,11 @@ export default function DeepScanPanel({ scan }) {
   const cookieScore = meta.cookieScore;
   const jwts = meta.jwts || [];
   const epRisk = meta.endpointRisk || [];
+  const takeover = meta.subdomainTakeover || [];
+  const corsImpact = meta.corsImpact;
+  const rateLimit = meta.rateLimit;
 
-  const hasData = !!(dns || supply.length > 0 || secTxt || waf.length > 0 || cookieScore || jwts.length > 0 || epRisk.length > 0);
+  const hasData = !!(dns || supply.length > 0 || secTxt || waf.length > 0 || cookieScore || jwts.length > 0 || epRisk.length > 0 || takeover.length > 0 || corsImpact || rateLimit);
   if (!hasData) return null;
 
   return (
@@ -257,6 +260,72 @@ export default function DeepScanPanel({ scan }) {
           />
         </Section>
       )}
+
+      {/* ── Subdomain Takeover ── */}
+      {takeover.filter(t => t.risk === "critical" || t.risk === "high").length > 0 && (
+        <Section title="Subdomain Takeover Risk" icon="⚠">
+          {takeover.filter(t => t.risk === "critical" || t.risk === "high").map((t, i) => (
+            <div key={i} style={{ padding: "8px 10px", marginBottom: 6, background: t.risk === "critical" ? "#ff386011" : "#ffb02011", borderLeft: `3px solid ${t.risk === "critical" ? "#ff3860" : "#ffb020"}`, borderRadius: 4 }}>
+              <div style={{ fontSize: 13 }}>
+                <Badge label={t.risk.toUpperCase()} color={t.risk === "critical" ? "#ff3860" : "#ffb020"} />
+                <span style={{ color: "#7dfcff", marginLeft: 6 }}>{t.subdomain}</span>
+                {t.service && <span className="small dim" style={{ marginLeft: 6 }}>→ {t.service}</span>}
+              </div>
+              <div className="small dim" style={{ marginTop: 4 }}>{t.issue}</div>
+              {t.evidence && <pre style={{ marginTop: 4, fontSize: 10, color: "var(--dim)", maxHeight: 80, overflow: "auto" }}>{t.evidence}</pre>}
+            </div>
+          ))}
+        </Section>
+      )}
+
+      {/* ── CORS Exploit Impact ── */}
+      {corsImpact && corsImpact.severity !== "low" && (
+        <Section title="CORS Exploitation Impact" icon="↗">
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
+            <div>
+              <div className="small dim">Allow-Origin</div>
+              <code style={{ fontSize: 12 }}>{corsImpact.origin}</code>
+            </div>
+            <div>
+              <div className="small dim">Credentials</div>
+              <Badge label={corsImpact.credentials ? "YES ⚠" : "No"} color={corsImpact.credentials ? "#ff3860" : "#33ffa1"} />
+            </div>
+          </div>
+          <div style={{ marginBottom: 8 }}>
+            <Badge label={`Severity: ${corsImpact.severity.toUpperCase()}`} color={corsImpact.severity === "critical" ? "#ff3860" : corsImpact.severity === "high" ? "#ffb020" : "#ffd93d"} />
+            {corsImpact.cwe && <Badge label={corsImpact.cwe} color="#ffd93d" />}
+          </div>
+          <div style={{ fontSize: 12 }}>
+            <div className="small dim" style={{ marginBottom: 4 }}>Exploit scenario:</div>
+            {corsImpact.exploitScenario.map((s, i) => (
+              <div key={i} style={{ marginBottom: 3, color: "#ffb020", fontSize: 11 }}>▸ {s}</div>
+            ))}
+          </div>
+        </Section>
+      )}
+
+      {/* ── Rate Limiting ── */}
+      {rateLimit && (
+        <Section title={`Rate Limit Detection: ${rateLimit.overall.toUpperCase()}`} icon="⏱">
+          {rateLimit.endpoints.map((e, i) => (
+            <div key={i} style={{ marginBottom: 8, padding: "6px 10px", background: "var(--panel-2)", borderRadius: 4 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                <Badge label={e.rated ? "RATE-LIMITED" : "UNLIMITED"} color={e.rated ? "#33ffa1" : "#ff3860"} />
+                <code style={{ fontSize: 11 }}>{e.url}</code>
+              </div>
+              <div className="small dim">{e.detail}</div>
+              {e.threshold && <div className="small">Triggers after {e.threshold} requests</div>}
+              {e.timings && <div className="small dim" style={{ marginTop: 2 }}>Response times: {e.timings.join(" → ")}</div>}
+            </div>
+          ))}
+          {rateLimit.recommendation && (
+            <div style={{ marginTop: 8, padding: "8px 10px", background: "#ff386011", borderLeft: "3px solid #ff3860", borderRadius: 4, fontSize: 12, color: "#ffb020" }}>
+              ⚠ {rateLimit.recommendation}
+            </div>
+          )}
+        </Section>
+      )}
+
     </div>
   );
 }

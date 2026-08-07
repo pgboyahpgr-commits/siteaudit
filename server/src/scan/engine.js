@@ -29,6 +29,7 @@ import { fingerprintWaf, generateWafFix } from "./waf.js";
 import { scoreCookies } from "./cookiescore.js";
 import { checkJwts } from "./jwtcheck.js";
 import { scoreEndpointRisk } from "./endpointrisk.js";
+import { checkSubdomainTakeover, checkCorsExploitImpact, detectRateLimiting } from "./advanced.js";
 
 let findSeq = 0;
 const newFindingId = () => `fn_${(++findSeq).toString(36)}${Math.random().toString(36).slice(2, 6)}`;
@@ -61,7 +62,7 @@ const MIXED_RE = /(?:src|href)="(http:\/\/[^"']+)"/gi;
 export async function runScan(scan, onProgress = () => {}) {
   const targetUrl = scan.targetUrl;
   const findings = [];
-  const meta = { tech: [], services: [], pagesCrawled: 0, jsFiles: [], endpoints: [], endpointCount: 0, cookies: [], robots: null, crawls: [], subdomains: [], dnsDeep: null, dnsFixes: [], supplyChain: [], securityTxt: null, waf: [], cookieScore: null, jwts: [], endpointRisk: [] };
+  const meta = { tech: [], services: [], pagesCrawled: 0, jsFiles: [], endpoints: [], endpointCount: 0, cookies: [], robots: null, crawls: [], subdomains: [], dnsDeep: null, dnsFixes: [], supplyChain: [], securityTxt: null, waf: [], cookieScore: null, jwts: [], endpointRisk: [], subdomainTakeover: [], corsImpact: null, rateLimit: null };
 
   // ---- Phase 1: Discovery ----
   onProgress(1, "Discovery", "Crawling pages and collecting source code...");
@@ -899,14 +900,12 @@ export async function runScan(scan, onProgress = () => {}) {
     /* non-fatal */
   }
 
-  // ---- Phase 9: Active probes (Full Check only) ----
-  if (scan.mode === "full") {
-    onProgress(9, "Active Probes", "Running SQLi, XSS, CSRF, and redirect tests...");
-    try {
-      await runActiveProbes(scan, findings, meta, allPages);
-    } catch (err) {
-      console.error("[active-probes] Error:", err.message);
-    }
+  // ---- Phase 9: Active probes (runs in all modes) ----
+  onProgress(9, "Active Probes", "Running SQLi, XSS, CSRF, and redirect tests...");
+  try {
+    await runActiveProbes(scan, findings, meta, allPages);
+  } catch (err) {
+    console.error("[active-probes] Error:", err.message);
   }
 
   async function runActiveProbes(scan, findings, meta, allPages) {
@@ -1113,6 +1112,34 @@ export async function runScan(scan, onProgress = () => {}) {
         findings.push(finding({ severity: "high", category: "endpoint", title: `${risky.length} high-risk endpoints detected`, url: targetUrl, evidence: risky.slice(0, 5).map(e => `${e.risk}: ${e.path} (${e.matchedPatterns.map(p => p.label).join(", ")})`).join("\n"), description: "These endpoints expose sensitive functionality. Ensure proper authentication and authorization on each.", phase: "endpoints", tool: "risk-scorer" }));
       }
     } catch { meta.endpointRisk = []; }
+
+    // ── Subdomain Takeover Check ──
+    try {
+      meta.subdomainTakeover = await checkSubdomainTakeover(meta.subdomains || []);
+      const takeovers = meta.subdomainTakeover.filter(s => s.risk === "critical" || s.risk === "high");
+      for (const t of takeovers) {
+        findings.push(finding({ severity: t.risk === "critical" ? "critical" : "high", category: "exposure", title: `Possible ${t.service || "subdomain"} takeover: ${t.subdomain}`, url: `https://${t.subdomain}`, evidence: t.evidence || t.issue, description: t.issue + ". If the service is no longer controlled, an attacker can claim it and serve malicious content.", phase: "subdomain", tool: "takeover-check" }));
+      }
+    } catch { meta.subdomainTakeover = []; }
+
+    // ── CORS Exploit Impact ──
+    try {
+      const homeHeaders = home.headers ? Object.fromEntries(Object.entries(home.headers)) : {};
+      meta.corsImpact = await checkCorsExploitImpact(homeHeaders, targetUrl);
+      if (meta.corsImpact && meta.corsImpact.severity === "critical") {
+        findings.push(finding({ severity: "critical", category: "misconfig", title: "Critical CORS misconfiguration — authenticated requests exposed", url: targetUrl, evidence: `ACAO: ${meta.corsImpact.origin} · Credentials: ${meta.corsImpact.credentials}`, description: meta.corsImpact.exploitScenario.join(". ") + `. CWE: ${meta.corsImpact.cwe}.`, phase: "headers", tool: "cors-impact" }));
+      }
+    } catch { meta.corsImpact = null; }
+
+    // ── Rate Limiting Detection ──
+    try {
+      meta.rateLimit = await detectRateLimiting(targetUrl);
+      if (meta.rateLimit.overall === "none") {
+        findings.push(finding({ severity: "medium", category: "misconfig", title: "No rate limiting detected on API endpoints", url: targetUrl, evidence: meta.rateLimit.endpoints.map(e => `${e.url}: ${e.detail}`).join("\n"), description: "Endpoints accept unlimited rapid requests — vulnerable to brute force, credential stuffing, and DoS attacks. Implement token bucket or sliding window rate limiting.", phase: "endpoints", tool: "rate-limit" }));
+      } else if (meta.rateLimit.overall === "partial") {
+        findings.push(finding({ severity: "low", category: "info", title: "Partial rate limiting detected", url: targetUrl, evidence: `${meta.rateLimit.endpoints.filter(e => e.rated).length}/${meta.rateLimit.endpoints.length} endpoints rate-limited`, description: "Some endpoints have rate limiting, others don't. Ensure consistent protection across all public endpoints.", phase: "endpoints", tool: "rate-limit" }));
+      }
+    } catch { meta.rateLimit = null; }
 
     const score = computeScore(findings);
     return { findings, score, meta };

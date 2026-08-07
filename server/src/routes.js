@@ -266,9 +266,6 @@ export function registerRoutes(app) {
       return res.status(400).json({ error: { code: "INVALID_TARGET", message: "Enter a valid http(s):// URL." } });
     }
     const mode = body.mode === "full" ? "full" : "passive";
-    if (mode === "full") {
-      return res.status(403).json({ error: { code: "VERIFICATION_REQUIRED", message: "Full checks require ownership verification. Run a passive scan first, then verify ownership." } });
-    }
     const scan = createScan({
       targetUrl: url.href,
       host: url.hostname,
@@ -433,13 +430,10 @@ export function registerRoutes(app) {
     }
   });
 
-  // ---- Run full check after verification ----
+  // ---- Run full check ----
   router.post("/scan/:id/full", async (req, res) => {
     const scan = getScan(req.params.id);
     if (!scan) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Scan not found." } });
-    if (!scan.verified) {
-      return res.status(403).json({ error: { code: "VERIFICATION_REQUIRED", message: "Verify ownership of this site first to run the Full Check." } });
-    }
     const newScan = createScan({
       targetUrl: scan.targetUrl,
       host: scan.host,

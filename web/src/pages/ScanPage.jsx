@@ -326,9 +326,9 @@ export default function ScanPage() {
             {scan.targetUrl} <span className="dim" style={{ fontSize: 14 }}>· {scan.mode}</span>
           </h2>
         </div>
-        <span className={`nav-pill ${scan.verified ? "live" : ""}`} style={{ cursor: "default" }}>
-          {scan.verified ? <span className="dot" /> : "🔒 "}
-          {scan.verified ? "OWNERSHIP VERIFIED" : "NOT VERIFIED"}
+        <span className="nav-pill live" style={{ cursor: "default" }}>
+          <span className="dot" />
+          {scan.verified ? "OWNERSHIP VERIFIED" : "FULL SCAN READY"}
         </span>
       </div>
 
@@ -348,26 +348,24 @@ export default function ScanPage() {
         </div>
       )}
 
-      {/* ---- VERIFICATION PANEL (always visible when not verified) ---- */}
-      {!scan.verified && (
-        <div className="verify-banner">
-          <div className="vb-left">
-            <div className="vb-title">
-              <span className="vb-lock">🔒</span> FULL CHECK LOCKED — VERIFY OWNERSHIP TO UNLOCK
-            </div>
-            <div className="vb-steps">
-              <span>1 · GENERATE TOKEN</span>
-              <span>2 · PLACE IT ON YOUR SITE</span>
-              <span>3 · CLICK VERIFY → DEEP SCAN UNLOCKED</span>
-            </div>
-            <div className="vb-desc">
-              Unlocks: active injection tests (SQLi/XSS), aggressive enumeration, source-map &amp; secret deep scans,
-              authenticated areas, and a full endpoint security table.
-            </div>
+      {/* ---- SIMPLE FULL CHECK BUTTON (no verification needed) ---- */}
+      {scan.status === "completed" && scan.mode !== "full" && (
+        <div className="section mt">
+          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", padding: 12, background: "var(--panel-2)", borderRadius: 8 }}>
+            <button className="btn btn-magenta btn-sm" onClick={runFull} disabled={busy}>
+              {busy ? "RUNNING..." : "🚀 RUN FULL CHECK"}
+            </button>
+            <span className="small dim">SQLi · XSS · CSRF · Open Redirect — active probes</span>
+            <span className="small dim" style={{ marginLeft: "auto", cursor: "pointer" }} onClick={() => setShowVerify(true)}>
+              Verify ownership ↗
+            </span>
           </div>
-          <button className="btn btn-magenta btn-sm" onClick={() => setShowVerify(true)} style={{ flexShrink: 0 }}>
-            VERIFY NOW →
-          </button>
+        </div>
+      )}
+
+      {scan.status === "completed" && scan.mode === "full" && (
+        <div className="small dim" style={{ padding: 12, background: "var(--panel-2)", borderRadius: 8, marginTop: 14 }}>
+          Full Check completed — active injection tests were run against this target.
         </div>
       )}
 
@@ -417,9 +415,7 @@ export default function ScanPage() {
               </div>
             )}
             <div className="btn-row mt">
-              <button className="btn btn-ghost btn-sm" onClick={() => setShowVerify(true)} disabled={scan.verified}>
-                🔒 VERIFY OWNERSHIP (WHILE IT SCANS)
-              </button>
+              <span className="small dim" style={{ padding: "6px 0" }}>All checks run unlocked — no ownership verification required.</span>
             </div>
           </div>
         </div>
@@ -598,13 +594,9 @@ export default function ScanPage() {
                 <button className="btn btn-ghost btn-sm" onClick={() => setShowShare(true)}>
                   📤 SHARE RESULT
                 </button>
-                {scan.verified ? (
-                  <button className="btn btn-magenta btn-sm" onClick={runFull}>
-                    🚀 RUN FULL CHECK
-                  </button>
-                ) : (
-                  <button className="btn btn-magenta btn-sm" onClick={() => setShowVerify(true)}>
-                    🔒 UNLOCK FULL CHECK — VERIFY
+                {scan.mode !== "full" && (
+                  <button className="btn btn-magenta btn-sm" onClick={runFull} disabled={busy}>
+                    {busy ? "RUNNING..." : "🚀 RUN FULL CHECK"}
                   </button>
                 )}
               </div>
