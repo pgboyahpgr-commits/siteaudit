@@ -14,7 +14,7 @@ async function safe(fnName, ...args) {
   return sqlite[fnName](...args);
 }
 
-export const createUser = (a, b, c, d) => safe("createUser", { id: a, email: b, passwordHash: c });
+export const createUser = (user) => safe("createUser", user);
 export const findUserByEmail = (a) => safe("findUserByEmail", a);
 export const findUserById = (a) => safe("findUserById", a);
 export const upsertScan = (a) => safe("upsertScan", a);

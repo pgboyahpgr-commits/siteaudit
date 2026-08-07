@@ -100,6 +100,7 @@ export const api = {
   getReports: () => request("/reports"),
   register: (email, password) => request("/auth/register", { method: "POST", body: { email, password } }),
   login: (email, password) => request("/auth/login", { method: "POST", body: { email, password } }),
+  githubAuth: (code) => request("/auth/github", { method: "POST", body: { code } }),
   me: () => request("/me"),
   myScans: () => request("/my/scans"),
   saveSettings: (settings) => request("/settings", { method: "POST", body: settings }),

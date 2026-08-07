@@ -15,8 +15,8 @@ import {
 import { enqueue } from "./queue.js";
 import { validateToken, emailConfigured } from "./scan/verify.js";
 import { normalizeUrl } from "./scan/http.js";
-import { registerUser, loginUser, requireAuth } from "./auth.js";
-import { listUserScans, saveChatMessage, listChatMessages, dbKind, upsertScan } from "./db.js";
+import { registerUser, loginUser, requireAuth, signToken } from "./auth.js";
+import { listUserScans, saveChatMessage, listChatMessages, dbKind, upsertScan, createUser, findUserByEmail } from "./db.js";
 import { newId } from "./store.js";
 
 const userSettings = {};
@@ -141,7 +141,7 @@ export function registerRoutes(app) {
   });
 
   router.post("/settings", async (req, res) => {
-    const allowed = ["GEMINI_API_KEY","XAI_API_KEY","OPENAI_API_KEY","ANTHROPIC_API_KEY","COMPLETIONS_API_KEY","MISTRAL_API_KEY","NVIDIA_NIM_API_KEY","LMSTUDIO_ENABLED","LMSTUDIO_BASE_URL","LMSTUDIO_MODEL"];
+    const allowed = ["GEMINI_API_KEY","XAI_API_KEY","OPENAI_API_KEY","ANTHROPIC_API_KEY","COMPLETIONS_API_KEY","MISTRAL_API_KEY","NVIDIA_NIM_API_KEY","LMSTUDIO_ENABLED","LMSTUDIO_BASE_URL","LMSTUDIO_MODEL","GITHUB_OAUTH_CLIENT_ID","GITHUB_OAUTH_SECRET"];
     for (const [k, v] of Object.entries(req.body || {})) {
       if (allowed.includes(k) && typeof v === "string" && v.length > 0) {
         userSettings[k] = v;
@@ -220,6 +220,45 @@ export function registerRoutes(app) {
       res.json(await loginUser(parsed.data.email.toLowerCase(), parsed.data.password));
     } catch (err) {
       res.status(err.statusCode || 500).json({ error: { code: "AUTH", message: err.message } });
+    }
+  });
+
+  // ---- GitHub OAuth ----
+  router.post("/auth/github", async (req, res) => {
+    const code = String(req.body?.code || "");
+    if (!code) return res.status(400).json({ error: { code: "VALIDATION", message: "code required" } });
+    try {
+      // Exchange code for access token
+      const tokenRes = await fetch("https://github.com/login/oauth/access_token", {
+        method: "POST",
+        headers: { "content-type": "application/json", accept: "application/json" },
+        body: JSON.stringify({
+          client_id: "Ov23li7CPbU5TBC1oCzR",
+          client_secret: process.env.GITHUB_OAUTH_SECRET || process.env.GITHUB_OAUTH_CLIENT_SECRET || "",
+          code,
+        }),
+      });
+      const tokenData = await tokenRes.json();
+      if (tokenData.error) throw new Error(tokenData.error_description || tokenData.error);
+      const accessToken = tokenData.access_token;
+
+      // Get user info
+      const userRes = await fetch("https://api.github.com/user", {
+        headers: { authorization: `Bearer ${accessToken}`, "user-agent": "SiteAudit" },
+      });
+      const userData = await userRes.json();
+      const githubId = "gh_" + userData.id;
+      const userEmail = userData.email || `${userData.login}@github.user`;
+
+      // Find or create user
+      let user = await findUserByEmail(userEmail);
+      if (!user) {
+        user = { id: newId("us"), email: userEmail, passwordHash: "github:" + githubId };
+        await createUser(user);
+      }
+      res.json({ user: { id: user.id, email: user.email || userEmail }, token: signToken(user.id) });
+    } catch (err) {
+      res.status(401).json({ error: { code: "AUTH", message: err.message } });
     }
   });
 
