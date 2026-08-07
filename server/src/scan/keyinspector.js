@@ -1,7 +1,7 @@
 const PROVIDERS = {
   gemini: {
     label: "Google Gemini",
-    autoDetect: /^AIza[A-Za-z0-9_-]{30,}$/,
+    autoDetect: /^(?:AIza[A-Za-z0-9_-]{30,}|AQ\.[A-Za-z0-9_-]{30,})$/,
     testUrl: (key) => `https://generativelanguage.googleapis.com/v1beta/models?key=${key}`,
     testHeaders: (key) => ({}),
     okStatus: [200],
@@ -169,6 +169,26 @@ export async function inspectKey(key) {
     if (p.autoDetect && p.autoDetect.test(key)) {
       detectedProvider = id;
       break;
+    }
+  }
+
+  if (!detectedProvider) {
+    // Try to detect by testing against providers without strict auto-detect
+    for (const [id, p] of Object.entries(PROVIDERS)) {
+      if (p.autoDetect) continue; // skip strict format checkers
+      try {
+        const url = typeof p.testUrl === "function" ? p.testUrl(key) : p.testUrl?.() ;
+        if (!url) continue;
+        const headers = p.testHeaders ? p.testHeaders(key) : {};
+        const res = await fetch(url, {
+          headers: { ...headers, "user-agent": "SiteAudit-KeyInspector/1.0" },
+          signal: AbortSignal.timeout(8000),
+        });
+        if (p.okStatus.includes(res.status)) {
+          detectedProvider = id;
+          break;
+        }
+      } catch {}
     }
   }
 
